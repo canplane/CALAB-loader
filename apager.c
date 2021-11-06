@@ -1,3 +1,5 @@
+// gcc -S test.c -> test.s
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,11 +13,13 @@
 extern int errno;
 extern char **environ;	// get environment variables
 
-int my_execve(const char *path, char *const argv[], char *const envp[])
+int my_execve(const char *path, char *argv[], char *envp[])
 {
 	int fd;
     char *addr;
     struct stat statbuf;
+
+    //argv[0] = "test.o";
 
 	// open file and set statbuf
 	if (stat(argv[0], &statbuf) == -1) {
@@ -32,7 +36,9 @@ int my_execve(const char *path, char *const argv[], char *const envp[])
         perror("Error: mmap\n");
         exit(1);
     }
-
+    
+    // debug
+    /*
     int WORD = 16;
     for (int offset = 0; offset < statbuf.st_size; offset++) {
         if (offset % WORD == 0) {
@@ -47,6 +53,10 @@ int my_execve(const char *path, char *const argv[], char *const envp[])
     }
     printf("\n");
     printf("%lld\n", statbuf.st_size);
+     */
+    
+
+    //load_elf_binary();
 
 	// munmap and close file
     if (munmap(addr, 40) == -1) {
