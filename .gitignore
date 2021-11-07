@@ -1,3 +1,4 @@
 .DS_Store
 
-foo/
+foo.c
+bar.c

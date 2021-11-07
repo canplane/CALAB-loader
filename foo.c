@@ -1,6 +1,9 @@
 #include <stdio.h>
+#include <unistd.h>
 
 int main()
 {
-    printf("%s\n", "\x7f""ELF");
+    printf("%p\n", brk(0));
+    printf("%p\n", sbrk(1000));
+    printf("%p\n", sbrk(1000));
 }
