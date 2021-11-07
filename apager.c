@@ -98,8 +98,8 @@ void print_elf_header(Elf64_Ehdr *ep)
         //printf("Elf64_Half \te_machine: \t%#x\n", ep->e_machine);       // Machine type
         //printf("Elf64_Word \te_version: \t%d\n", ep->e_version);        // Object file version
     printf("Elf64_Addr \te_entry: \t%#lx\n", ep->e_entry);          // Entry point address
-	printf("Elf64_Off \te_phoff: \t%lx\n", ep->e_phoff);            // Program header offset
-	printf("Elf64_Off \te_shoff: \t%lx\n", ep->e_shoff);            // Section header offset
+	printf("Elf64_Off \te_phoff: \t%#lx\n", ep->e_phoff);            // Program header offset
+	printf("Elf64_Off \te_shoff: \t%#lx\n", ep->e_shoff);            // Section header offset
         //printf("Elf64_Word \te_flags: \t%#x\n", ep->e_flags);           // Processor-specific flags
     printf("Elf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);          // ELF header size
     printf("Elf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);    // Size of program header entry
@@ -113,7 +113,7 @@ void print_program_header_entry(Elf64_Phdr *pp)
 {
     printf("Elf64_Word \tp_type: \t%#x\n", pp->p_type);         // Type of segment
     printf("Elf64_Word \tp_flags: \t%#x\n", pp->p_flags);       // Segment attributes
-    printf("Elf64_Off \tp_offset: \t%lx\n", pp->p_offset);      // Offset in file
+    printf("Elf64_Off \tp_offset: \t%#lx\n", pp->p_offset);      // Offset in file
     printf("Elf64_Addr \tp_vaddr: \t%#lx\n", pp->p_vaddr);      // Virtual address in memory
     printf("Elf64_Addr \tp_paddr: \t%#lx\n", pp->p_paddr);      // Reserved
     printf("Elf64_Xword \tp_filesz: \t%ld\n", pp->p_filesz);    // Size of segment in file
@@ -121,29 +121,27 @@ void print_program_header_entry(Elf64_Phdr *pp)
     printf("Elf64_Xword \tp_align: \t%ld\n", pp->p_align);      // Alignment of segment
 }
 
-int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
+void *elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
 {
-	// struct elfhdr -> Elf64_Ehdr
-	// struct elf_phdr -> Elf64_Phdr
+    // align to page
+    Elf64_Addr padding;
+    
+    padding = ELF_PAGEOFFSET(addr);
+    addr += padding;
+    offset -= padding;
+    len = ELF_PAGEALIGN(padding + len);
 
-	Elf64_Ehdr elf_header;
-	/*struct file *file;
-	unsigned int load_addr;
-	int i;
-	int error;
-
-	Elf64_Phdr *elf_phdata, *elf_ppnt;
-	int elf_exec_fileno;
-	unsigned int elf_bss, k, elf_brk;
-	int retval;
-	Elf64_Addr elf_entry;
-	unsigned long start_code, end_code, end_data;
-	unsigned long elf_stack;
-	
-	load_addr = 0;*/
+    if (!len)
+        return addr;
+    return mmap((void *)addr, len, prot, flags, fd, offset);
+}
 
 
+int load_elf_binary(int fd)
+{
 	// ELF header
+    Elf64_Ehdr elf_header;
+
 	read(fd, &elf_header, sizeof(Elf64_Ehdr));
     print_elf_header(&elf_header);  // debug
 
@@ -154,40 +152,36 @@ int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
 
 
     // Program header table
+    Elf64_Phdr program_header_entry;
+    Elf64_Addr elf_bss, elf_brk;
+
     lseek(fd, elf_header.e_phoff, SEEK_SET);
-
-	Elf64_Addr elf_bss, elf_brk;
-
-	elf_bss = 0;
-	elf_brk = 0;
     for (int i = 0; i < elf_header.e_phnum; i++) {
-        Elf64_Phdr program_header_entry;
         read(fd, &program_header_entry, sizeof(Elf64_Phdr));
         printf("\nProgram header entry [%d]\n", i); print_program_header_entry(&program_header_entry);   // debug
 
         if (program_header_entry.p_type != PT_LOAD)
             continue;
-		
-		set_brk(elf_bss, elf_brk);
-
 
 		int elf_prot = 0;
-		if (program_header_entry->p_flags & PF_R)
+		if (program_header_entry.p_flags & PF_R)
 			elf_prot |= PROT_READ;
-		if (program_header_entry->p_flags & PF_W)
+		if (program_header_entry.p_flags & PF_W)
 			elf_prot |= PROT_WRITE;
-		if (program_header_entry->p_flags & PF_X)
+		if (program_header_entry.p_flags & PF_X)
 			elf_prot |= PROT_EXEC;
-		
-		int elf_flags = MAP_PRIVATE | MAP_DENYWRITE | MAP_EXECUTABLE;
+        
+		int elf_flags = MAP_PRIVATE | MAP_FIXED;
 
-		elf_map(fd, elf_prot, elf_flags)
-
-
+		elf_map(program_header_entry.p_vaddr, program_header_entry.p_filesz, elf_prot, elf_flags, fd, program_header_entry.p_offset);
 
 
-		elf_bss = MAX2(elf_bss, program_header_entry.p_vaddr + program_header_entry.p_filesz);
-        elf_brk = MAX2(elf_brk, program_header_entry.p_vaddr + program_header_entry.p_memsz);
+        // .bss
+        elf_bss = program_header_entry.p_vaddr + program_header_entry.p_filesz;
+        elf_brk = program_header_entry.p_vaddr + program_header_entry.p_memsz;
+        if (elf_bss < elf_brk) {  // !(elf_bss == elf_brk)
+            elf_map(elf_bss, elf_brk - elf_bss, elf_prot, elf_flags | MAP_ANONYMOUS, -1, 0);
+        }
     }
 	
 	/*// Program header
