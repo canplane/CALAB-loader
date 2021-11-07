@@ -16,7 +16,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include <linux/elf.h>
+#include <elf.h>
 
 #define MAX2(a, b) 			((a) < (b) ? (b) : (a))
 
@@ -31,7 +31,7 @@
 extern int errno;
 
 
-int create_elf_tables(char *argv[], char *envp[])
+int create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_header)
 {
 	Elf64_auxv_t *auxv;
 	int argc, envc, auxc;
@@ -47,52 +47,110 @@ int create_elf_tables(char *argv[], char *envp[])
 		argc++;
 	stack_size += sizeof(int);
 	stack_size += (argc + 1) * sizeof(char *);
-
 	// envp
 	envc = 0;
 	for (char **p = envp; *p; p++)
 		envc++;
 	stack_size += (envc + 1) * sizeof(char *);
-
 	// auxv
-	auxv = (Elf64_auxv_t)(envp + envc + 1), auxc = 0;
-	for (Elf64_auxv_t *p = auxv; *p; p++)
+	auxv = (Elf64_auxv_t *)(envp + envc + 1), auxc = 0;
+	for (Elf64_auxv_t *p = auxv; p->a_type != AT_NULL; p++)
 		auxc++;
 	stack_size += (auxc + 1) * sizeof(Elf64_auxv_t);
 
-	printf("stack_size: %d\n", stack_size);
 
+    /* // debug
+	int i;
+	printf("argc : %d\n", argc);
+	i = 0;
+	for (char **p = argv; *p; p++, i++)
+		printf("argv[%d] (%p) : (%p) '%s'\n", i, p, *p, *p);
+	i = 0;
+	for (char **p = envp; *p; p++, i++)
+		printf("envp[%d] (%p) : (%p) '%s'\n", i, p, *p, *p);
+	i = 0;
+    for (Elf64_auxv_t *p = auxv; p->a_type != AT_NULL; p++, i++);
+    printf("auxc: %d\n", i);
+    puts("");
+	 */
 
-	/*Elf64_Addr sp;
-	sp = (Elf64_Addr)mmap(NULL, stack_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS | MAP_GROWSDOWN, -1, 0);
+	
+	Elf64_Addr sp;
+	sp = (Elf64_Addr)mmap((void *)0x10000000, ELF_PAGEALIGN(stack_size), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);  // MAP_GROUSDOWN
+	sp += stack_size;
 
-	sp -= (auxc + 1) * sizeof(char *);
-	memcpy((void *)sp, auxv, (auxc + 1) * sizeof(char *));
-	sp -= (envc + 1) * sizeof(char *);
-	memcpy((void *)sp, envp, (envc + 1) * sizeof(char *));
-	sp -= (argc + 1) * sizeof(char *);
-	memcpy((void *)sp, argv, (argc + 1) * sizeof(char *));
-	sp -= sizeof(int);
-	memcpy((void *)sp, &argc, sizeof(int));
-
-	for (auxc = 0, p = envp; p->a_type != AT_NULL; auxc++, p++) {
+	// auxv
+	sp -= (auxc + 1) * sizeof(Elf64_auxv_t);
+	memcpy((void *)sp, auxv, (auxc + 1) * sizeof(Elf64_auxv_t));
+	for (Elf64_auxv_t *p = (Elf64_auxv_t *)sp; p->a_type != AT_NULL; p++) {
 		switch (p->a_type) {
-			case AT_EXECFD:
+			case AT_EXECFD:	// File descriptor of program
+				//printf("AT_EXECFD: %ld -> %d\n", p->a_un.a_val, fd);
+				p->a_un.a_val = fd;
 				break;
-			case AT_PHDR:
+			case AT_PHDR:	// Program headers for program
+				//printf("AT_PHDR: %#lx -> %#lx\n", p->a_un.a_val, elf_header.e_phoff);
+				p->a_un.a_val = elf_header.e_phoff;
 				break;
-			case AT_PHENT:
+			case AT_PHENT:	// Size of program header entry
+				//printf("AT_PHENT: %lu -> %u\n", p->a_un.a_val, elf_header.e_phentsize);
+				p->a_un.a_val = elf_header.e_phentsize;
 				break;
-			case AT_PHNUM:
-				break;
-			case AT_PAGESZ:
+			case AT_PHNUM:	// Number of program headers
+				//printf("AT_PHNUM: %lu -> %u\n", p->a_un.a_val, elf_header.e_phnum);
+				p->a_un.a_val = elf_header.e_phnum;
 				break;
 			case AT_BASE:
+				//printf("AT_BASE: %#lx -> \n", p->a_un.a_val);
 				break;
-			case AT_ENTRY:
+			case AT_ENTRY:	// Entry point of program
+				//printf("AT_ENTRY: %#lx -> %#lx\n", p->a_un.a_val, elf_header.e_entry);
+				p->a_un.a_val = elf_header.e_entry;
 				break;
 		}
-	}*/
+	}
+
+	// envp
+	sp -= (envc + 1) * sizeof(char *);
+	memcpy((void *)sp, envp, (envc + 1) * sizeof(char *));
+	// argv
+	sp -= (argc + 1) * sizeof(char *);
+	memcpy((void *)sp, argv, (argc + 1) * sizeof(char *));
+	// argc
+	sp -= sizeof(int);
+	memcpy((void *)sp, &argc, sizeof(int));
+	
+
+	/* // debug
+	Elf64_Addr q = (Elf64_Addr)sp;
+	printf("argc : %d\n", *(int *)q);
+	q += sizeof(int);
+	i = 0;
+	for (char **p = (char **)q; ; p++, i++) {
+		if (!*p) {
+			q = (Elf64_Addr)++p;
+			break;
+		}
+		printf("argv[%d] (%p) : (%p) '%s'\n", i, p, *p, *p);
+	}
+	i = 0;
+	for (char **p = (char **)q; ; p++, i++) {
+		if (!*p) {
+			q = (Elf64_Addr)++p;
+			break;
+		}
+		printf("envp[%d] (%p) : (%p) '%s'\n", i, p, *p, *p);
+	}
+	i = 0;
+    for (Elf64_auxv_t *p = (Elf64_auxv_t *)q; p->a_type != AT_NULL; p++, i++) {
+		if (p->a_type == AT_NULL) {
+			printf("auxc: %d\n", i);
+			break;
+		}
+	}
+    puts("");
+	 */
+
 
 	return 0;
 }
@@ -107,14 +165,14 @@ void print_elf_header(Elf64_Ehdr *ep)
     printf("\tElf64_Half \te_type: \t%#x\n", ep->e_type);				// Object file type
     printf("\tElf64_Half \te_machine: \t%#x\n", ep->e_machine);			// Machine type
     printf("\tElf64_Word \te_version: \t%u\n", ep->e_version);			// Object file version
-    printf("\tElf64_Addr \te_entry: \t%#llx\n", ep->e_entry);			// Entry point address
-	printf("\tElf64_Off \te_phoff: \t%#llx\n", ep->e_phoff);			// Program header offset
-	printf("\tElf64_Off \te_shoff: \t%#llx\n", ep->e_shoff);			// Section header offset
+    printf("\tElf64_Addr \te_entry: \t%#lx\n", ep->e_entry);			// Entry point address
+	printf("\tElf64_Off \te_phoff: \t%#lx\n", ep->e_phoff);				// Program header offset
+	printf("\tElf64_Off \te_shoff: \t%#lx\n", ep->e_shoff);				// Section header offset
     printf("\tElf64_Word \te_flags: \t%#x\n", ep->e_flags);				// Processor-specific flags
     printf("\tElf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);			// ELF header size
     printf("\tElf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);		// Size of program header entry
         // equal to sizeof(Elf64_Ehdr) = 64
-	printf("\tElf64_Half \te_phnum: \t%d\n", ep->e_phnum);				// Number of program header entries
+	printf("\tElf64_Half \te_phnum: \t%u\n", ep->e_phnum);				// Number of program header entries
     printf("\tElf64_Half \te_shentsize: \t%u\n", ep->e_shentsize);		// Size of section header entry
     printf("\tElf64_Half \te_shnum: \t%u\n", ep->e_shnum);				// Number of section header entries
     printf("\tElf64_Half \te_shstrndx: \t%u\n", ep->e_shentsize);		// Section name string table index
@@ -125,12 +183,12 @@ void print_program_header_entry(int i, Elf64_Phdr *pp)
 	printf("Program header entry [%d] {\n", i);
     printf("\tElf64_Word \tp_type: \t%#x\n", pp->p_type);				// Type of segment
     printf("\tElf64_Word \tp_flags: \t%#x\n", pp->p_flags);				// Segment attributes
-    printf("\tElf64_Off \tp_offset: \t%#llx\n", pp->p_offset);			// Offset in file
-    printf("\tElf64_Addr \tp_vaddr: \t%#llx\n", pp->p_vaddr);			// Virtual address in memory
-    	//printf("\tElf64_Addr \tp_paddr: \t%#llx\n", pp->p_paddr);			// Reserved
-    printf("\tElf64_Xword \tp_filesz: \t%#llx\n", pp->p_filesz);		// Size of segment in file
-    printf("\tElf64_Xword \tp_memsz: \t%#llx\n", pp->p_memsz);			// Size of segment in memory
-    printf("\tElf64_Xword \tp_align: \t%#llx\n", pp->p_align);			// Alignment of segment
+    printf("\tElf64_Off \tp_offset: \t%#lx\n", pp->p_offset);			// Offset in file
+    printf("\tElf64_Addr \tp_vaddr: \t%#lx\n", pp->p_vaddr);			// Virtual address in memory
+    	//printf("\tElf64_Addr \tp_paddr: \t%#lx\n", pp->p_paddr);			// Reserved
+    printf("\tElf64_Xword \tp_filesz: \t%#lx\n", pp->p_filesz);			// Size of segment in file
+    printf("\tElf64_Xword \tp_memsz: \t%#lx\n", pp->p_memsz);			// Size of segment in memory
+    printf("\tElf64_Xword \tp_align: \t%#lx\n", pp->p_align);			// Alignment of segment
 	printf("}\n");
 }
 
@@ -148,7 +206,7 @@ void *elf_map(Elf64_Addr addr, Elf64_Xword len, int prot, int flags, int fd, Elf
 	new_len = ELF_PAGEALIGN(ELF_PAGEOFFSET(addr) + len);
 	
 	// debug
-	fprintf(stderr, "mmap(addr=%#llx, len=%#llx) -> ", new_addr, new_len);
+	fprintf(stderr, "mmap(addr=%#lx, len=%#lx) -> ", new_addr, new_len);
 	
 	// A file is mapped in multiples of the page size.
 	// For a file that is not a multiple of the page size, 
@@ -172,7 +230,7 @@ void *elf_map_bss(Elf64_Addr start, Elf64_Addr end, int prot, int flags)
 		return (void *)new_start;
 	
 	// debug
-	fprintf(stderr, "<.bbs> mmap(addr=%#llx, len=%#llx) -> ", new_start, new_end);
+	fprintf(stderr, "<.bbs> mmap(addr=%#lx, len=%#lx) -> ", new_start, new_end);
 
 	// MAP_ANONYMOUS: The mapping is not backed by any file; its contents are initialized to zero.
 	retval = mmap((void *)new_start, end - start, prot, flags | MAP_ANONYMOUS, -1, 0);
@@ -184,7 +242,7 @@ void *elf_map_bss(Elf64_Addr start, Elf64_Addr end, int prot, int flags)
 }
 
 
-int load_elf_binary(int fd)
+Elf64_Ehdr load_elf_binary(int fd)
 {
 	Elf64_Ehdr elf_header;
 
@@ -230,6 +288,8 @@ int load_elf_binary(int fd)
             elf_map_bss(elf_bss, elf_brk, elf_prot, elf_flags);
         }
     }
+
+	return elf_header;
 	
 	
 
@@ -252,20 +312,19 @@ int load_elf_binary(int fd)
 int my_execve(const char *path, char *argv[], char *envp[])
 {
 	int fd;
-    char *addr;
-    struct stat statbuf;
-
+	Elf64_Ehdr elf_header;
 
     if ((fd = open(argv[0], O_RDONLY)) == -1) {
         fprintf(stderr, "Error: open: %s\n", strerror(errno));
         exit(1);
     }
 
-	//load_elf_binary(fd);
-	create_elf_tables(argv, envp);
+	elf_header = load_elf_binary(fd);
+	create_elf_tables(argv, envp, fd, elf_header);
     
     // debug
     /*
+	char *addr;
     int WORD = 16;
     for (int offset = 0; offset < statbuf.st_size; offset++) {
         if (offset % WORD == 0) {
