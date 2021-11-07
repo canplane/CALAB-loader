@@ -16,6 +16,10 @@
 
 #include <elf.h>
 
+#define MAX2(a, b) ((a) < (b) ? (b) : (a))
+
+#define PAGESZ 4096
+
 extern int errno;
 extern char **environ;	// get environment variables
 
@@ -151,6 +155,11 @@ int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
 
     // Program header table
     lseek(fd, elf_header.e_phoff, SEEK_SET);
+
+	Elf64_Addr elf_bss, elf_brk;
+
+	elf_bss = 0;
+	elf_brk = 0;
     for (int i = 0; i < elf_header.e_phnum; i++) {
         Elf64_Phdr program_header_entry;
         read(fd, &program_header_entry, sizeof(Elf64_Phdr));
@@ -158,8 +167,27 @@ int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
 
         if (program_header_entry.p_type != PT_LOAD)
             continue;
+		
+		set_brk(elf_bss, elf_brk);
 
-        
+
+		int elf_prot = 0;
+		if (program_header_entry->p_flags & PF_R)
+			elf_prot |= PROT_READ;
+		if (program_header_entry->p_flags & PF_W)
+			elf_prot |= PROT_WRITE;
+		if (program_header_entry->p_flags & PF_X)
+			elf_prot |= PROT_EXEC;
+		
+		int elf_flags = MAP_PRIVATE | MAP_DENYWRITE | MAP_EXECUTABLE;
+
+		elf_map(fd, elf_prot, elf_flags)
+
+
+
+
+		elf_bss = MAX2(elf_bss, program_header_entry.p_vaddr + program_header_entry.p_filesz);
+        elf_brk = MAX2(elf_brk, program_header_entry.p_vaddr + program_header_entry.p_memsz);
     }
 	
 	/*// Program header
