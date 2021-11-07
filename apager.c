@@ -14,11 +14,22 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include <elf.h>
+#include <linux/elf.h>
+#include <asm/page.h>
 
 #define MAX2(a, b) ((a) < (b) ? (b) : (a))
 
-#define PAGESZ 4096
+
+/* /fs/binfmt_elf.c */
+#if ELF_EXEC_PAGESIZE > PAGE_SIZE
+#define ELF_MIN_ALIGN	ELF_EXEC_PAGESIZE
+#else
+#define ELF_MIN_ALIGN	PAGE_SIZE
+#endif
+
+#define ELF_PAGESTART(_v)	((_v) & ~(unsigned long)(ELF_MIN_ALIGN - 1))
+#define ELF_PAGEOFFSET(_v)	((_v) & (ELF_MIN_ALIGN - 1))
+#define ELF_PAGEALIGN(_v)	(((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))
 
 extern int errno;
 extern char **environ;	// get environment variables
@@ -91,15 +102,16 @@ extern char **environ;	// get environment variables
 	return sp;
 }*/
 
+
 void print_elf_header(Elf64_Ehdr *ep)
 {
 	printf("unsigned char \te_ident[16]: \t%s\n", ep->e_ident);     // ELF identification
-        printf("Elf64_Half \te_type: \t%#x\n", ep->e_type);             // Object file type
+        printf("Elf64_Half \te_type: \t%#x\n", ep->e_type);           	// Object file type
         //printf("Elf64_Half \te_machine: \t%#x\n", ep->e_machine);       // Machine type
         //printf("Elf64_Word \te_version: \t%d\n", ep->e_version);        // Object file version
     printf("Elf64_Addr \te_entry: \t%#lx\n", ep->e_entry);          // Entry point address
-	printf("Elf64_Off \te_phoff: \t%#lx\n", ep->e_phoff);            // Program header offset
-	printf("Elf64_Off \te_shoff: \t%#lx\n", ep->e_shoff);            // Section header offset
+	printf("Elf64_Off \te_phoff: \t%#lx\n", ep->e_phoff);          	// Program header offset
+	printf("Elf64_Off \te_shoff: \t%#lx\n", ep->e_shoff);         	// Section header offset
         //printf("Elf64_Word \te_flags: \t%#x\n", ep->e_flags);           // Processor-specific flags
     printf("Elf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);          // ELF header size
     printf("Elf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);    // Size of program header entry
@@ -113,9 +125,9 @@ void print_program_header_entry(Elf64_Phdr *pp)
 {
     printf("Elf64_Word \tp_type: \t%#x\n", pp->p_type);         // Type of segment
     printf("Elf64_Word \tp_flags: \t%#x\n", pp->p_flags);       // Segment attributes
-    printf("Elf64_Off \tp_offset: \t%#lx\n", pp->p_offset);      // Offset in file
+    printf("Elf64_Off \tp_offset: \t%#lx\n", pp->p_offset);     // Offset in file
     printf("Elf64_Addr \tp_vaddr: \t%#lx\n", pp->p_vaddr);      // Virtual address in memory
-    printf("Elf64_Addr \tp_paddr: \t%#lx\n", pp->p_paddr);      // Reserved
+    	//printf("Elf64_Addr \tp_paddr: \t%#lx\n", pp->p_paddr);      // Reserved
     printf("Elf64_Xword \tp_filesz: \t%ld\n", pp->p_filesz);    // Size of segment in file
     printf("Elf64_Xword \tp_memsz: \t%ld\n", pp->p_memsz);      // Size of segment in memory
     printf("Elf64_Xword \tp_align: \t%ld\n", pp->p_align);      // Alignment of segment
