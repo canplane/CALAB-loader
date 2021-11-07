@@ -105,20 +105,20 @@ void print_elf_header(Elf64_Ehdr *ep)
 {
 	printf("ELF header {\n");
 	printf("\tunsigned char \te_ident[16]: \t%s\n", ep->e_ident);		// ELF identification
-        printf("\tElf64_Half \te_type: \t%#x\n", ep->e_type);			// Object file type
-        printf("\tElf64_Half \te_machine: \t%#x\n", ep->e_machine);			// Machine type
-        printf("\tElf64_Word \te_version: \t%u\n", ep->e_version);			// Object file version
+    printf("\tElf64_Half \te_type: \t%#x\n", ep->e_type);				// Object file type
+    printf("\tElf64_Half \te_machine: \t%#x\n", ep->e_machine);			// Machine type
+    printf("\tElf64_Word \te_version: \t%u\n", ep->e_version);			// Object file version
     printf("\tElf64_Addr \te_entry: \t%#llx\n", ep->e_entry);			// Entry point address
 	printf("\tElf64_Off \te_phoff: \t%#llx\n", ep->e_phoff);			// Program header offset
 	printf("\tElf64_Off \te_shoff: \t%#llx\n", ep->e_shoff);			// Section header offset
-        //printf("\tElf64_Word \te_flags: \t%#x\n", ep->e_flags);			// Processor-specific flags
+    printf("\tElf64_Word \te_flags: \t%#x\n", ep->e_flags);				// Processor-specific flags
     printf("\tElf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);			// ELF header size
     printf("\tElf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);		// Size of program header entry
         // equal to sizeof(Elf64_Ehdr) = 64
 	printf("\tElf64_Half \te_phnum: \t%d\n", ep->e_phnum);				// Number of program header entries
-        printf("\tElf64_Half \te_shentsize: \t%u\n", ep->e_shentsize);		// Size of section header entry
-        printf("\tElf64_Half \te_shnum: \t%u\n", ep->e_shnum);				// Number of section header entries
-        printf("\tElf64_Half \te_shstrndx: \t%u\n", ep->e_shentsize);		// Section name string table index
+    printf("\tElf64_Half \te_shentsize: \t%u\n", ep->e_shentsize);		// Size of section header entry
+    printf("\tElf64_Half \te_shnum: \t%u\n", ep->e_shnum);				// Number of section header entries
+    printf("\tElf64_Half \te_shstrndx: \t%u\n", ep->e_shentsize);		// Section name string table index
 	printf("}\n");
 }
 void print_program_header_entry(int i, Elf64_Phdr *pp)
