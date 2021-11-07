@@ -103,79 +103,99 @@ extern char **environ;	// get environment variables
 // type declaration: /include/uapi/linux/elf.h
 void print_elf_header(Elf64_Ehdr *ep)
 {
-	printf("unsigned char \te_ident[16]: \t%s\n", ep->e_ident);     // ELF identification
-        printf("Elf64_Half \te_type: \t%#x\n", ep->e_type);          	// Object file type
-        printf("Elf64_Half \te_machine: \t%#x\n", ep->e_machine);       // Machine type
-        printf("Elf64_Word \te_version: \t%u\n", ep->e_version);        // Object file version
-    printf("Elf64_Addr \te_entry: \t%#llx\n", ep->e_entry);        	// Entry point address
-	printf("Elf64_Off \te_phoff: \t%#llx\n", ep->e_phoff);          	// Program header offset
-	printf("Elf64_Off \te_shoff: \t%#llx\n", ep->e_shoff);         	// Section header offset
-        //printf("Elf64_Word \te_flags: \t%#x\n", ep->e_flags);         	// Processor-specific flags
-    printf("Elf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);          // ELF header size
-    printf("Elf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);    // Size of program header entry
+	printf("ELF header {\n");
+	printf("\tunsigned char \te_ident[16]: \t%s\n", ep->e_ident);		// ELF identification
+        printf("\tElf64_Half \te_type: \t%#x\n", ep->e_type);			// Object file type
+        printf("\tElf64_Half \te_machine: \t%#x\n", ep->e_machine);			// Machine type
+        printf("\tElf64_Word \te_version: \t%u\n", ep->e_version);			// Object file version
+    printf("\tElf64_Addr \te_entry: \t%#llx\n", ep->e_entry);			// Entry point address
+	printf("\tElf64_Off \te_phoff: \t%#llx\n", ep->e_phoff);			// Program header offset
+	printf("\tElf64_Off \te_shoff: \t%#llx\n", ep->e_shoff);			// Section header offset
+        //printf("\tElf64_Word \te_flags: \t%#x\n", ep->e_flags);			// Processor-specific flags
+    printf("\tElf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);			// ELF header size
+    printf("\tElf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);		// Size of program header entry
         // equal to sizeof(Elf64_Ehdr) = 64
-	printf("Elf64_Half \te_phnum: \t%d\n", ep->e_phnum);            // Number of program header entries
-        printf("Elf64_Half \te_shentsize: \t%u\n", ep->e_shentsize);   	// Size of section header entry
-        printf("Elf64_Half \te_shnum: \t%u\n", ep->e_shnum);            // Number of section header entries
-        printf("Elf64_Half \te_shstrndx: \t%u\n", ep->e_shentsize);     // Section name string table index
+	printf("\tElf64_Half \te_phnum: \t%d\n", ep->e_phnum);				// Number of program header entries
+        printf("\tElf64_Half \te_shentsize: \t%u\n", ep->e_shentsize);		// Size of section header entry
+        printf("\tElf64_Half \te_shnum: \t%u\n", ep->e_shnum);				// Number of section header entries
+        printf("\tElf64_Half \te_shstrndx: \t%u\n", ep->e_shentsize);		// Section name string table index
+	printf("}\n");
 }
-void print_program_header_entry(Elf64_Phdr *pp)
+void print_program_header_entry(int i, Elf64_Phdr *pp)
 {
-    printf("Elf64_Word \tp_type: \t%#x\n", pp->p_type);        		// Type of segment
-    printf("Elf64_Word \tp_flags: \t%#x\n", pp->p_flags);       	// Segment attributes
-    printf("Elf64_Off \tp_offset: \t%#llx\n", pp->p_offset);   		// Offset in file
-    printf("Elf64_Addr \tp_vaddr: \t%#llx\n", pp->p_vaddr);    		// Virtual address in memory
-    	//printf("Elf64_Addr \tp_paddr: \t%#llx\n", pp->p_paddr);   		// Reserved
-    printf("Elf64_Xword \tp_filesz: \t%#llx\n", pp->p_filesz);  	// Size of segment in file
-    printf("Elf64_Xword \tp_memsz: \t%#llx\n", pp->p_memsz);    	// Size of segment in memory
-    printf("Elf64_Xword \tp_align: \t%#llx\n", pp->p_align);    	// Alignment of segment
+	printf("Program header entry [%d] {\n", i);
+    printf("\tElf64_Word \tp_type: \t%#x\n", pp->p_type);				// Type of segment
+    printf("\tElf64_Word \tp_flags: \t%#x\n", pp->p_flags);				// Segment attributes
+    printf("\tElf64_Off \tp_offset: \t%#llx\n", pp->p_offset);			// Offset in file
+    printf("\tElf64_Addr \tp_vaddr: \t%#llx\n", pp->p_vaddr);			// Virtual address in memory
+    	//printf("\tElf64_Addr \tp_paddr: \t%#llx\n", pp->p_paddr);			// Reserved
+    printf("\tElf64_Xword \tp_filesz: \t%#llx\n", pp->p_filesz);		// Size of segment in file
+    printf("\tElf64_Xword \tp_memsz: \t%#llx\n", pp->p_memsz);			// Size of segment in memory
+    printf("\tElf64_Xword \tp_align: \t%#llx\n", pp->p_align);			// Alignment of segment
+	printf("}\n");
 }
 
 void *elf_map(Elf64_Addr addr, Elf64_Xword len, int prot, int flags, int fd, Elf64_Off offset)
 {
 	void *retval;
-
-	// debug
-	Elf64_Addr addr_bak = addr;
-	Elf64_Xword len_bak = len;
-	Elf64_Off offset_bak = offset;
+	Elf64_Addr new_addr;
+	Elf64_Xword new_len;
+	Elf64_Off new_offset;
 
     // align to page
-    Elf64_Xword padding;
-
-    padding = ELF_PAGEOFFSET(addr);
-	if (fd != -1) {
-		addr -= padding;
-		offset -= padding;
-	}
-	else {
-		addr = ELF_PAGEALIGN(addr);
-	}
-	len = ELF_PAGEALIGN(padding + len);
+	// Loadable process segments must have congruent values for p_vaddr and p_offset, modulo the page size.
+	new_addr = ELF_PAGESTART(addr);
+	new_offset = ELF_PAGESTART(offset);
+	new_len = ELF_PAGEALIGN(ELF_PAGEOFFSET(addr) + len);
 	
 	// debug
-	printf("----\n");
-	printf("padding= %#llx\n", padding);
-	printf("addr= %#llx -> %#llx\n", addr_bak, addr);
-	printf("offset= %#llx -> %#llx\n", offset_bak, offset);
-	printf("len= %#llx -> %#llx\n", len_bak, len);
-	printf("----\n");
-
-	fprintf(stderr, "mmap(addr=%#llx, len=%#llx, offset=%#llx) = ", addr, len, offset);
-	retval = mmap((void *)addr, (size_t)len, prot, flags, fd, (off_t)offset);
+	fprintf(stderr, "mmap(addr=%#llx, len=%#llx) -> ", new_addr, new_len);
+	
+	// A file is mapped in multiples of the page size.
+	// For a file that is not a multiple of the page size, 
+	//		the remaining memory is zeroed when mapped, and writes to that region are not written out to the file.
+	retval = mmap((void *)new_addr, new_len, prot, flags, fd, new_offset);
 	if (retval == MAP_FAILED)
 		perror("Error: mmap");
 	else
-		fprintf(stderr, "[%p, %p)\n", retval, retval + len);
+		fprintf(stderr, "[%p, %p) mapped\n", retval, retval + new_len);
+    return retval;
+}
+
+void *elf_map_bss(Elf64_Addr start, Elf64_Addr end, int prot, int flags)
+{
+	void *retval;
+	Elf64_Addr new_start, new_end;
+
+    // align to page
+	new_start = ELF_PAGEALIGN(start), new_end = ELF_PAGEALIGN(end);
+	if (new_start == new_end)
+		return (void *)new_start;
+	
+	// debug
+	fprintf(stderr, "<.bbs> mmap(addr=%#llx, len=%#llx) -> ", new_start, new_end);
+
+	// MAP_ANONYMOUS: The mapping is not backed by any file; its contents are initialized to zero.
+	retval = mmap((void *)new_start, end - start, prot, flags | MAP_ANONYMOUS, -1, 0);
+	if (retval == MAP_FAILED)
+		perror("Error: mmap");
+	else
+		fprintf(stderr, "[%p, %p) mapped\n", retval, retval + (new_end - new_start));
     return retval;
 }
 
 
 int load_elf_binary(int fd)
 {
-	// ELF header
-    Elf64_Ehdr elf_header;
+	Elf64_Ehdr elf_header;
 
+	Elf64_Phdr program_header_entry;
+	Elf64_Addr elf_bss, elf_brk;
+	int elf_prot;
+	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// ET_EXEC only
+
+
+	// ELF header
 	read(fd, &elf_header, sizeof(Elf64_Ehdr));
     print_elf_header(&elf_header);  // debug
 
@@ -188,90 +208,32 @@ int load_elf_binary(int fd)
 
 
     // Program header table
-    Elf64_Phdr program_header_entry;
-    Elf64_Addr elf_bss, elf_brk;
-
     lseek(fd, elf_header.e_phoff, SEEK_SET);
     for (int i = 0; i < elf_header.e_phnum; i++) {
         read(fd, &program_header_entry, sizeof(Elf64_Phdr));
 
-		printf("\nProgram header entry [%d]\n", i);
-
         if (program_header_entry.p_type != PT_LOAD)
             continue;
+
+		puts(""), print_program_header_entry(i, &program_header_entry);	// debug
+
+		elf_prot = 0;
+		if (program_header_entry.p_flags & PF_R)	elf_prot |= PROT_READ;
+		if (program_header_entry.p_flags & PF_W)	elf_prot |= PROT_WRITE;
+		if (program_header_entry.p_flags & PF_X)	elf_prot |= PROT_EXEC;
 		
-		print_program_header_entry(&program_header_entry);   // debug
-
-		int elf_prot = 0;
-		if (program_header_entry.p_flags & PF_R)
-			elf_prot |= PROT_READ;
-		if (program_header_entry.p_flags & PF_W)
-			elf_prot |= PROT_WRITE;
-		if (program_header_entry.p_flags & PF_X)
-			elf_prot |= PROT_EXEC;
-        
-		int elf_flags = MAP_PRIVATE | MAP_FIXED;	// ET_EXEC
-
 		elf_map(program_header_entry.p_vaddr, program_header_entry.p_filesz, elf_prot, elf_flags, fd, program_header_entry.p_offset);
-
 
         // .bss
         elf_bss = program_header_entry.p_vaddr + program_header_entry.p_filesz;
         elf_brk = program_header_entry.p_vaddr + program_header_entry.p_memsz;
         if (elf_bss < elf_brk) {  // !(elf_bss == elf_brk)
-            elf_map(elf_bss, elf_brk - elf_bss, elf_prot, elf_flags | MAP_ANONYMOUS, -1, 0);
+            elf_map_bss(elf_bss, elf_brk, elf_prot, elf_flags);
         }
     }
 	
-	/*// Program header
-	elf_phdata = malloc(elf_ex.e_phentsize * elf_ex.e_phnum);
-	lseek(bprm->file, elf_ex.e_phoff, SEEK_SET);
-	read(bprm->file, (char *)elf_phdata, elf_ex.e_phentsize * elf_ex.e_phnum);
+	/*
 
-	elf_bss = 0;
-	elf_brk = 0;
-	
-	elf_exec_fileno = open(bprm->file, O_RDONLY);
-
-	file = current->filp[elf_exec_fileno];
-	
-	elf_stack = ~0UL;  // 0xff..ff
-	start_code = 0;
-	end_code = 0;
-	end_data = 0;
-	
-	elf_entry = elf_ex.e_entry;
-	
-	bprm->p += change_ldt(0, bprm->page);
-	current->start_stack = bprm->p;
-
-	for (i = 0, elf_ppnt = elf_phdata; i < elf_ex.e_phnum; i++, elf_ppnt++) {
-		if (elf_ppnt->p_type != PT_LOAD)
-			continue;
-
-		error = do_mmap(file,
-				elf_ppnt->p_vaddr & 0xfffff000,
-				elf_ppnt->p_filesz + (elf_ppnt->p_vaddr & 0xfff),
-				PROT_READ | PROT_WRITE | PROT_EXEC,
-				MAP_FIXED | MAP_PRIVATE,
-				elf_ppnt->p_offset & 0xfffff000);
-		
-		if (!load_addr)
-			load_addr = elf_ppnt->p_vaddr - elf_ppnt->p_offset;
-		k = elf_ppnt->p_vaddr;
-		if (k > start_code)
-			start_code = k;
-		k = elf_ppnt->p_vaddr + elf_ppnt->p_filesz;
-		if (k > elf_bss)
-			elf_bss = k;
-		if ((elf_ppnt->p_flags | PROT_WRITE) && end_code < k)
-			end_code = k;
-		if (end_data < k)
-			end_data = k; 
-		k = elf_ppnt->p_vaddr + elf_ppnt->p_memsz;
-		if (k > elf_brk)
-			elf_brk = k;
-	}
 
 	bprm->p -= MAX_ARG_PAGES * PAGE_SIZE;
 	create_elf_tables((char *)bprm->p, bprm->argc, bprm->envc, load_addr);
