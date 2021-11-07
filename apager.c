@@ -29,8 +29,6 @@
 #define ELF_PAGEALIGN(_v)	(((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))		// ceil
 
 extern int errno;
-extern char **environ;	// get environment variables
-
 
 
 /*unsigned long * create_elf_tables(char * p, int argc, int envc, Elf64_Ehdr* exec, unsigned int load_addr, int ibcs)
@@ -305,7 +303,7 @@ int my_execve(const char *path, char *argv[], char *envp[])
 }
 #define execve my_execve
 
-int main(int argc, char *argv[])
+int main(int argc, char *argv[], char *envp[])
 {
 	char	**new_argv;
 
@@ -315,10 +313,14 @@ int main(int argc, char *argv[])
     }
 
 	new_argv = &argv[1];
-	if (execve(new_argv[0], new_argv, environ) == -1) {
+	/*if (execve(new_argv[0], new_argv, envp) == -1) {
 		fprintf(stderr, "Cannot execute the program '%s': %s\n", new_argv[0], strerror(errno));
 		exit(1);
-	}
+	}*/
+	while (*envp)
+		printf("%s\n", *envp++);
+
+	
 
 	printf("This is not to be printed\n");
 	return 0;
