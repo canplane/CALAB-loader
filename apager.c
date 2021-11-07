@@ -154,7 +154,7 @@ int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
     for (int i = 0; i < elf_header.e_phnum; i++) {
         Elf64_Phdr program_header_entry;
         read(fd, &program_header_entry, sizeof(Elf64_Phdr));
-        printf("\n[%d]\n", i); print_program_header_entry(&program_header_entry);   // debug
+        printf("\nProgram header entry [%d]\n", i); print_program_header_entry(&program_header_entry);   // debug
 
         if (program_header_entry.p_type != PT_LOAD)
             continue;
