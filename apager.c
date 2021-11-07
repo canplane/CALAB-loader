@@ -1,3 +1,5 @@
+// cc -static test.c -o test.out  // disable dynamic linking. ET_DYN -> ET_EXEC
+
 // gcc -S test.c -> test.s
 // gcc -c test.c -> test.o
 // od -t x1 test.o
@@ -15,21 +17,16 @@
 #include <errno.h>
 
 #include <linux/elf.h>
-#include <asm/page.h>
 
-#define MAX2(a, b) ((a) < (b) ? (b) : (a))
+#define MAX2(a, b) 			((a) < (b) ? (b) : (a))
 
+/* Adapted from linux/fs/binfmt_elf.c */
+#define PAGE_SIZE			4096
+#define ELF_MIN_ALIGN		PAGE_SIZE
 
-/* /fs/binfmt_elf.c */
-#if ELF_EXEC_PAGESIZE > PAGE_SIZE
-#define ELF_MIN_ALIGN	ELF_EXEC_PAGESIZE
-#else
-#define ELF_MIN_ALIGN	PAGE_SIZE
-#endif
-
-#define ELF_PAGESTART(_v)	((_v) & ~(unsigned long)(ELF_MIN_ALIGN - 1))
-#define ELF_PAGEOFFSET(_v)	((_v) & (ELF_MIN_ALIGN - 1))
-#define ELF_PAGEALIGN(_v)	(((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))
+#define ELF_PAGESTART(_v)	((_v) & ~(unsigned long)(ELF_MIN_ALIGN - 1))			// floor
+#define ELF_PAGEOFFSET(_v)	((_v) & (ELF_MIN_ALIGN - 1))							// offset
+#define ELF_PAGEALIGN(_v)	(((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))		// ceil
 
 extern int errno;
 extern char **environ;	// get environment variables
@@ -103,49 +100,74 @@ extern char **environ;	// get environment variables
 }*/
 
 
+// type declaration: /include/uapi/linux/elf.h
 void print_elf_header(Elf64_Ehdr *ep)
 {
 	printf("unsigned char \te_ident[16]: \t%s\n", ep->e_ident);     // ELF identification
-        printf("Elf64_Half \te_type: \t%#x\n", ep->e_type);           	// Object file type
-        //printf("Elf64_Half \te_machine: \t%#x\n", ep->e_machine);       // Machine type
-        //printf("Elf64_Word \te_version: \t%d\n", ep->e_version);        // Object file version
-    printf("Elf64_Addr \te_entry: \t%#lx\n", ep->e_entry);          // Entry point address
-	printf("Elf64_Off \te_phoff: \t%#lx\n", ep->e_phoff);          	// Program header offset
-	printf("Elf64_Off \te_shoff: \t%#lx\n", ep->e_shoff);         	// Section header offset
-        //printf("Elf64_Word \te_flags: \t%#x\n", ep->e_flags);           // Processor-specific flags
+        printf("Elf64_Half \te_type: \t%#x\n", ep->e_type);          	// Object file type
+        printf("Elf64_Half \te_machine: \t%#x\n", ep->e_machine);       // Machine type
+        printf("Elf64_Word \te_version: \t%u\n", ep->e_version);        // Object file version
+    printf("Elf64_Addr \te_entry: \t%#llx\n", ep->e_entry);        	// Entry point address
+	printf("Elf64_Off \te_phoff: \t%#llx\n", ep->e_phoff);          	// Program header offset
+	printf("Elf64_Off \te_shoff: \t%#llx\n", ep->e_shoff);         	// Section header offset
+        //printf("Elf64_Word \te_flags: \t%#x\n", ep->e_flags);         	// Processor-specific flags
     printf("Elf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);          // ELF header size
     printf("Elf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);    // Size of program header entry
         // equal to sizeof(Elf64_Ehdr) = 64
 	printf("Elf64_Half \te_phnum: \t%d\n", ep->e_phnum);            // Number of program header entries
-        printf("Elf64_Half \te_shentsize: \t%d\n", ep->e_shentsize);    // Size of section header entry
-        printf("Elf64_Half \te_shnum: \t%d\n", ep->e_shnum);            // Number of section header entries
-        printf("Elf64_Half \te_shstrndx: \t%d\n", ep->e_shentsize);     // Section name string table index
+        printf("Elf64_Half \te_shentsize: \t%u\n", ep->e_shentsize);   	// Size of section header entry
+        printf("Elf64_Half \te_shnum: \t%u\n", ep->e_shnum);            // Number of section header entries
+        printf("Elf64_Half \te_shstrndx: \t%u\n", ep->e_shentsize);     // Section name string table index
 }
 void print_program_header_entry(Elf64_Phdr *pp)
 {
-    printf("Elf64_Word \tp_type: \t%#x\n", pp->p_type);         // Type of segment
-    printf("Elf64_Word \tp_flags: \t%#x\n", pp->p_flags);       // Segment attributes
-    printf("Elf64_Off \tp_offset: \t%#lx\n", pp->p_offset);     // Offset in file
-    printf("Elf64_Addr \tp_vaddr: \t%#lx\n", pp->p_vaddr);      // Virtual address in memory
-    	//printf("Elf64_Addr \tp_paddr: \t%#lx\n", pp->p_paddr);      // Reserved
-    printf("Elf64_Xword \tp_filesz: \t%ld\n", pp->p_filesz);    // Size of segment in file
-    printf("Elf64_Xword \tp_memsz: \t%ld\n", pp->p_memsz);      // Size of segment in memory
-    printf("Elf64_Xword \tp_align: \t%ld\n", pp->p_align);      // Alignment of segment
+    printf("Elf64_Word \tp_type: \t%#x\n", pp->p_type);        		// Type of segment
+    printf("Elf64_Word \tp_flags: \t%#x\n", pp->p_flags);       	// Segment attributes
+    printf("Elf64_Off \tp_offset: \t%#llx\n", pp->p_offset);   		// Offset in file
+    printf("Elf64_Addr \tp_vaddr: \t%#llx\n", pp->p_vaddr);    		// Virtual address in memory
+    	//printf("Elf64_Addr \tp_paddr: \t%#llx\n", pp->p_paddr);   		// Reserved
+    printf("Elf64_Xword \tp_filesz: \t%#llx\n", pp->p_filesz);  	// Size of segment in file
+    printf("Elf64_Xword \tp_memsz: \t%#llx\n", pp->p_memsz);    	// Size of segment in memory
+    printf("Elf64_Xword \tp_align: \t%#llx\n", pp->p_align);    	// Alignment of segment
 }
 
-void *elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
+void *elf_map(Elf64_Addr addr, Elf64_Xword len, int prot, int flags, int fd, Elf64_Off offset)
 {
-    // align to page
-    Elf64_Addr padding;
-    
-    padding = ELF_PAGEOFFSET(addr);
-    addr += padding;
-    offset -= padding;
-    len = ELF_PAGEALIGN(padding + len);
+	void *retval;
 
-    if (!len)
-        return addr;
-    return mmap((void *)addr, len, prot, flags, fd, offset);
+	// debug
+	Elf64_Addr addr_bak = addr;
+	Elf64_Xword len_bak = len;
+	Elf64_Off offset_bak = offset;
+
+    // align to page
+    Elf64_Xword padding;
+
+    padding = ELF_PAGEOFFSET(addr);
+	if (fd != -1) {
+		addr -= padding;
+		offset -= padding;
+	}
+	else {
+		addr = ELF_PAGEALIGN(addr);
+	}
+	len = ELF_PAGEALIGN(padding + len);
+	
+	// debug
+	printf("----\n");
+	printf("padding= %#llx\n", padding);
+	printf("addr= %#llx -> %#llx\n", addr_bak, addr);
+	printf("offset= %#llx -> %#llx\n", offset_bak, offset);
+	printf("len= %#llx -> %#llx\n", len_bak, len);
+	printf("----\n");
+
+	fprintf(stderr, "mmap(addr=%#llx, len=%#llx, offset=%#llx) = ", addr, len, offset);
+	retval = mmap((void *)addr, (size_t)len, prot, flags, fd, (off_t)offset);
+	if (retval == MAP_FAILED)
+		perror("Error: mmap");
+	else
+		fprintf(stderr, "[%p, %p)\n", retval, retval + len);
+    return retval;
 }
 
 
@@ -159,7 +181,9 @@ int load_elf_binary(int fd)
 
     if (strncmp(&elf_header.e_ident[0], "\x7f""ELF", 4))  // magic number
 		exit(1);
-    if (elf_header.e_type != ET_EXEC && elf_header.e_type != ET_DYN)
+	if (elf_header.e_ident[EI_CLASS] != ELFCLASS64)
+		exit(1);
+    if (elf_header.e_type != ET_EXEC)	// only supported for ET_EXEC(static linked executable), not ET_DYN.
         exit(1);
 
 
@@ -170,10 +194,13 @@ int load_elf_binary(int fd)
     lseek(fd, elf_header.e_phoff, SEEK_SET);
     for (int i = 0; i < elf_header.e_phnum; i++) {
         read(fd, &program_header_entry, sizeof(Elf64_Phdr));
-        printf("\nProgram header entry [%d]\n", i); print_program_header_entry(&program_header_entry);   // debug
+
+		printf("\nProgram header entry [%d]\n", i);
 
         if (program_header_entry.p_type != PT_LOAD)
             continue;
+		
+		print_program_header_entry(&program_header_entry);   // debug
 
 		int elf_prot = 0;
 		if (program_header_entry.p_flags & PF_R)
@@ -183,7 +210,7 @@ int load_elf_binary(int fd)
 		if (program_header_entry.p_flags & PF_X)
 			elf_prot |= PROT_EXEC;
         
-		int elf_flags = MAP_PRIVATE | MAP_FIXED;
+		int elf_flags = MAP_PRIVATE | MAP_FIXED;	// ET_EXEC
 
 		elf_map(program_header_entry.p_vaddr, program_header_entry.p_filesz, elf_prot, elf_flags, fd, program_header_entry.p_offset);
 
