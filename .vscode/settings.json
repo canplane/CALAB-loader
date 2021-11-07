@@ -1,6 +1,0 @@
-{
-    "files.associations": {
-        "iterator": "c",
-        "errno.h": "c"
-    }
-}
