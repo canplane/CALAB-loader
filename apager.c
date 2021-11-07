@@ -31,71 +31,72 @@
 extern int errno;
 
 
-/*unsigned long * create_elf_tables(char * p, int argc, int envc, Elf64_Ehdr* exec, unsigned int load_addr, int ibcs)
+int create_elf_tables(char *argv[], char *envp[])
 {
-	unsigned long *argv, *envp, *dlinfo;
-	unsigned long *sp;
-	struct vm_area_struct *mpnt;
+	Elf64_auxv_t *auxv;
+	int argc, envc, auxc;
 
-	mpnt = malloc(sizeof(struct vm_area_struct));
-	mpnt->vm_task = current;
-	mpnt->vm_start = PAGE_MASK & (unsigned long)p;
-	mpnt->vm_end = TASK_SIZE;
-	mpnt->vm_page_prot = PAGE_PRIVATE | PAGE_DIRTY;
-	mpnt->vm_share = NULL;
-	mpnt->vm_inode = NULL;
-	mpnt->vm_offset = 0;
-	mpnt->vm_ops = NULL;
-	insert_vm_struct(current, mpnt);
-	current->stk_vma = mpnt;
-	
-	sp = (unsigned long *)(0xfffffffc & (unsigned long)p);
-	if (exec)
-		sp -= DLINFO_ITEMS * 2;
-	dlinfo = sp;
-	sp -= envc + 1;
-	envp = sp;
-	sp -= argc + 1;
-	argv = sp;
-	if (!ibcs) {
-		put_fs_long((unsigned long)envp, --sp);
-		put_fs_long((unsigned long)argv, --sp);
+	int stack_size;
+
+
+	stack_size = 0;
+
+	// argc, argv
+	argc = 0;
+	for (char **p = argv; *p; p++)
+		argc++;
+	stack_size += sizeof(int);
+	stack_size += (argc + 1) * sizeof(char *);
+
+	// envp
+	envc = 0;
+	for (char **p = envp; *p; p++)
+		envc++;
+	stack_size += (envc + 1) * sizeof(char *);
+
+	// auxv
+	auxv = (Elf64_auxv_t)(envp + envc + 1), auxc = 0;
+	for (Elf64_auxv_t *p = auxv; *p; p++)
+		auxc++;
+	stack_size += (auxc + 1) * sizeof(Elf64_auxv_t);
+
+	printf("stack_size: %d\n", stack_size);
+
+
+	/*Elf64_Addr sp;
+	sp = (Elf64_Addr)mmap(NULL, stack_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS | MAP_GROWSDOWN, -1, 0);
+
+	sp -= (auxc + 1) * sizeof(char *);
+	memcpy((void *)sp, auxv, (auxc + 1) * sizeof(char *));
+	sp -= (envc + 1) * sizeof(char *);
+	memcpy((void *)sp, envp, (envc + 1) * sizeof(char *));
+	sp -= (argc + 1) * sizeof(char *);
+	memcpy((void *)sp, argv, (argc + 1) * sizeof(char *));
+	sp -= sizeof(int);
+	memcpy((void *)sp, &argc, sizeof(int));
+
+	for (auxc = 0, p = envp; p->a_type != AT_NULL; auxc++, p++) {
+		switch (p->a_type) {
+			case AT_EXECFD:
+				break;
+			case AT_PHDR:
+				break;
+			case AT_PHENT:
+				break;
+			case AT_PHNUM:
+				break;
+			case AT_PAGESZ:
+				break;
+			case AT_BASE:
+				break;
+			case AT_ENTRY:
+				break;
+		}
 	}*/
 
-	/* The constant numbers (0-9) that we are writing here are
-	   described in the header file sys/auxv.h on at least
-	   some versions of SVr4 */
-	//if (exec) { /* Put this here for an ELF program interpreter */
-	/*	struct elf_phdr *eppnt;
-		eppnt = (struct elf_phdr *)exec->e_phoff;
-		put_fs_long(3, dlinfo++); put_fs_long(load_addr + exec->e_phoff, dlinfo++);
-		put_fs_long(4, dlinfo++); put_fs_long(sizeof(struct elf_phdr), dlinfo++);
-		put_fs_long(5, dlinfo++); put_fs_long(exec->e_phnum, dlinfo++);
-		put_fs_long(9, dlinfo++); put_fs_long((unsigned long)exec->e_entry, dlinfo++);
-		put_fs_long(7, dlinfo++); put_fs_long(SHM_RANGE_START, dlinfo++);
-		put_fs_long(8, dlinfo++); put_fs_long(0, dlinfo++);
-		put_fs_long(6, dlinfo++); put_fs_long(PAGE_SIZE, dlinfo++);
-		put_fs_long(0, dlinfo++); put_fs_long(0, dlinfo++);
-	};
+	return 0;
+}
 
-	put_fs_long((unsigned long)argc, --sp);
-	current->arg_start = (unsigned long)p;
-	while (argc-- > 0) {
-		put_fs_long((unsigned long)p, argv++);
-		while (get_fs_byte(p++))
-			;
-	}
-	put_fs_long(0, argv);
-	current->arg_end = current->env_start = (unsigned long) p;
-	while (envc-- > 0) {
-		put_fs_long((unsigned long)p, envp++);
-		while (get_fs_byte(p++))
-			;
-	}
-	put_fs_long(0,envp);
-	current->env_end = (unsigned long)p;
-	return sp;
-}*/
 
 
 // type declaration: /include/uapi/linux/elf.h
@@ -230,10 +231,10 @@ int load_elf_binary(int fd)
         }
     }
 	
-	/*
+	
 
 
-	bprm->p -= MAX_ARG_PAGES * PAGE_SIZE;
+	/*bprm->p -= MAX_ARG_PAGES * PAGE_SIZE;
 	create_elf_tables((char *)bprm->p, bprm->argc, bprm->envc, load_addr);
 
 	sys_brk((elf_brk + 0xfff) & 0xfffff000);
@@ -254,25 +255,14 @@ int my_execve(const char *path, char *argv[], char *envp[])
     char *addr;
     struct stat statbuf;
 
-    //argv[0] = "test.o";
 
-	// open file and set statbuf
-	/*if (stat(argv[0], &statbuf) == -1) {
-        fprintf(stderr, "Error: stat: %s\n", strerror(errno));
-        exit(1);
-    }*/
     if ((fd = open(argv[0], O_RDONLY)) == -1) {
         fprintf(stderr, "Error: open: %s\n", strerror(errno));
         exit(1);
     }
-	// mmap
-	/*addr = mmap(NULL, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)0);
-    if (addr == MAP_FAILED) {
-        perror("Error: mmap\n");
-        exit(1);
-    }*/
 
-	load_elf_binary(fd);
+	//load_elf_binary(fd);
+	create_elf_tables(argv, envp);
     
     // debug
     /*
@@ -305,7 +295,7 @@ int my_execve(const char *path, char *argv[], char *envp[])
 
 int main(int argc, char *argv[], char *envp[])
 {
-	char	**new_argv;
+	char **new_argv;
 
 	if (argc < 2) {
         fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
@@ -313,12 +303,10 @@ int main(int argc, char *argv[], char *envp[])
     }
 
 	new_argv = &argv[1];
-	/*if (execve(new_argv[0], new_argv, envp) == -1) {
+	if (execve(new_argv[0], new_argv, envp) == -1) {
 		fprintf(stderr, "Cannot execute the program '%s': %s\n", new_argv[0], strerror(errno));
 		exit(1);
-	}*/
-	while (*envp)
-		printf("%s\n", *envp++);
+	}
 
 	
 
