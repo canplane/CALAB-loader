@@ -104,7 +104,7 @@ int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
 	// struct elf_phdr -> Elf64_Phdr
 
 	Elf64_Ehdr elf_header;
-	struct file *file;
+	/*struct file *file;
 	unsigned int load_addr;
 	int i;
 	int error;
@@ -117,7 +117,7 @@ int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
 	unsigned long start_code, end_code, end_data;
 	unsigned long elf_stack;
 	
-	load_addr = 0;
+	load_addr = 0;*/
 	
 	/* ELF header */
 	read(fd, &elf_header, sizeof(Elf64_Ehdr));
@@ -201,20 +201,22 @@ int my_execve(const char *path, char *argv[], char *envp[])
     //argv[0] = "test.o";
 
 	// open file and set statbuf
-	if (stat(argv[0], &statbuf) == -1) {
+	/*if (stat(argv[0], &statbuf) == -1) {
         fprintf(stderr, "Error: stat: %s\n", strerror(errno));
         exit(1);
-    }
-    if ((fd = open(argv[0], O_RDWR | O_CREAT)) == -1) {
+    }*/
+    if ((fd = open(argv[0], O_RDONLY)) == -1) {
         fprintf(stderr, "Error: open: %s\n", strerror(errno));
         exit(1);
     }
 	// mmap
-	addr = mmap(NULL, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)0);
+	/*addr = mmap(NULL, statbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)0);
     if (addr == MAP_FAILED) {
         perror("Error: mmap\n");
         exit(1);
-    }
+    }*/
+
+	load_elf_binary(fd);
     
     // debug
     /*
@@ -233,15 +235,12 @@ int my_execve(const char *path, char *argv[], char *envp[])
     printf("\n");
     printf("%lld\n", statbuf.st_size);
      */
-    
-
-    //load_elf_binary();
 
 	// munmap and close file
-    if (munmap(addr, 40) == -1) {
+    /*if (munmap(addr, 40) == -1) {
         perror("Error: munmap\n");
         exit(1);
-    }
+    }*/
     close(fd);
 
 	return 0;
