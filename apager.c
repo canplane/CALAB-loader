@@ -14,12 +14,14 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include <elf.h>
+
 extern int errno;
 extern char **environ;	// get environment variables
 
 
 
-unsigned long * create_elf_tables(char * p, int argc, int envc, Elf64_Ehdr* exec, unsigned int load_addr, int ibcs)
+/*unsigned long * create_elf_tables(char * p, int argc, int envc, Elf64_Ehdr* exec, unsigned int load_addr, int ibcs)
 {
 	unsigned long *argv, *envp, *dlinfo;
 	unsigned long *sp;
@@ -48,13 +50,13 @@ unsigned long * create_elf_tables(char * p, int argc, int envc, Elf64_Ehdr* exec
 	if (!ibcs) {
 		put_fs_long((unsigned long)envp, --sp);
 		put_fs_long((unsigned long)argv, --sp);
-	}
+	}*/
 
 	/* The constant numbers (0-9) that we are writing here are
 	   described in the header file sys/auxv.h on at least
 	   some versions of SVr4 */
-	if (exec) { /* Put this here for an ELF program interpreter */
-		struct elf_phdr *eppnt;
+	//if (exec) { /* Put this here for an ELF program interpreter */
+	/*	struct elf_phdr *eppnt;
 		eppnt = (struct elf_phdr *)exec->e_phoff;
 		put_fs_long(3, dlinfo++); put_fs_long(load_addr + exec->e_phoff, dlinfo++);
 		put_fs_long(4, dlinfo++); put_fs_long(sizeof(struct elf_phdr), dlinfo++);
@@ -83,18 +85,22 @@ unsigned long * create_elf_tables(char * p, int argc, int envc, Elf64_Ehdr* exec
 	put_fs_long(0,envp);
 	current->env_end = (unsigned long)p;
 	return sp;
-}
+}*/
 
-void print_elf_header(Elf64_Ehdr elf_header)
+void print_elf_header(Elf64_Ehdr *ep)
 {
-	printf("e_ident: %s\n", ep->e_ident);
-	printf("e_entry: %p\n", ep->e_entry);
+	printf("e_ident[16]: %s\n", ep->e_ident);
+	printf("e_entry: 0x%lx\n", ep->e_entry);
 	printf("e_phoff: %lu\n", ep->e_phoff);
 	printf("e_shoff: %lu\n", ep->e_shoff);
 	printf("sizeof Elf64_Ehdr: %lu\n", sizeof(Elf64_Ehdr));
 	printf("e_ehsize: %u\n", ep->e_ehsize);
-	printf("e_phentsize: %u\n", ep->e_phentsize);
+	printf("e_phentsize: %u\n", ep->e_phentsize);  // sizeof(Elf64_Phdr)
 	printf("e_phnum: %u\n", ep->e_phnum);
+}
+void print_program_header_entry(Elf64_Phdr *pp)
+{
+    
 }
 
 
@@ -118,16 +124,26 @@ int load_elf_binary(int fd)//, struct linux_binprm *bprm, struct pt_regs *regs)
 	unsigned long elf_stack;
 	
 	load_addr = 0;*/
-	
-	/* ELF header */
+
+
+	// ELF header
 	read(fd, &elf_header, sizeof(Elf64_Ehdr));
-	printf_elf_header(elf_header);
+
+    if (strncmp(&elf_header.e_ident[0], "\x7f""ELF", 4))  // magic #
+		exit(1);
+    
+	print_elf_header(&elf_header);  // debug
+
+
+    // Program header table
+    lseek(fd, elf_header.e_phoff, SEEK_SET);
+    for (int i = 0; i < elf_header.e_phnum; i++) {
+        Elf64_Phdr program_header_entry;
+        read(fd, &program_header_entry, sizeof(Elf64_Phdr));
+        print_program_header_entry(&program_header_entry);
+    }
 	
-	/*if (strncmp(&elf_header.e_ident[0], "\x7f""ELF", 4))  // magic #
-		goto out;
-	if ()
-	
-	// Program header
+	/*// Program header
 	elf_phdata = malloc(elf_ex.e_phentsize * elf_ex.e_phnum);
 	lseek(bprm->file, elf_ex.e_phoff, SEEK_SET);
 	read(bprm->file, (char *)elf_phdata, elf_ex.e_phentsize * elf_ex.e_phnum);
