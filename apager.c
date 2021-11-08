@@ -31,7 +31,7 @@
 extern int errno;
 
 
-Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_header)
+Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_header, Elf64_Addr load_addr)
 {
 	Elf64_auxv_t *auxv;
 	int argc, envc, auxc;
@@ -45,7 +45,7 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_
 	argc = 0;
 	for (char **p = argv; *p; p++)
 		argc++;
-	stack_size += sizeof(int);
+	stack_size += sizeof(char *);
 	stack_size += (argc + 1) * sizeof(char *);
 	// envp
 	envc = 0;
@@ -76,7 +76,7 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_
 
 	
 	Elf64_Addr sp;
-	sp = (Elf64_Addr)mmap((void *)0x10000000, ELF_PAGEALIGN(stack_size), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);  // MAP_GROUSDOWN
+	sp = (Elf64_Addr)mmap((void *)0x10000000, PAGE_SIZE * 10 /*ELF_PAGEALIGN(stack_size)*/, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);  // MAP_GROUSDOWN
 	sp += stack_size;
 
 	// auxv
@@ -84,27 +84,16 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_
 	memcpy((void *)sp, auxv, (auxc + 1) * sizeof(Elf64_auxv_t));
 	for (Elf64_auxv_t *p = (Elf64_auxv_t *)sp; p->a_type != AT_NULL; p++) {
 		switch (p->a_type) {
-			case AT_EXECFD:	// File descriptor of program
-				//printf("AT_EXECFD: %ld -> %d\n", p->a_un.a_val, fd);
-				p->a_un.a_val = fd;
-				break;
 			case AT_PHDR:	// Program headers for program
-				//printf("AT_PHDR: %#lx -> %#lx\n", p->a_un.a_val, elf_header.e_phoff);
-				p->a_un.a_val = elf_header.e_phoff;
-				break;
-			case AT_PHENT:	// Size of program header entry
-				//printf("AT_PHENT: %lu -> %u\n", p->a_un.a_val, elf_header.e_phentsize);
-				p->a_un.a_val = elf_header.e_phentsize;
+				printf("AT_PHDR: %#lx -> %#lx\n", p->a_un.a_val, load_addr + elf_header.e_phoff);
+				p->a_un.a_val = load_addr + elf_header.e_phoff;
 				break;
 			case AT_PHNUM:	// Number of program headers
-				//printf("AT_PHNUM: %lu -> %u\n", p->a_un.a_val, elf_header.e_phnum);
+				printf("AT_PHNUM: %lu -> %u\n", p->a_un.a_val, elf_header.e_phnum);
 				p->a_un.a_val = elf_header.e_phnum;
 				break;
-			case AT_BASE:
-				//printf("AT_BASE: %#lx -> \n", p->a_un.a_val);
-				break;
 			case AT_ENTRY:	// Entry point of program
-				//printf("AT_ENTRY: %#lx -> %#lx\n", p->a_un.a_val, elf_header.e_entry);
+				printf("AT_ENTRY: %#lx -> %#lx\n", p->a_un.a_val, elf_header.e_entry);
 				p->a_un.a_val = elf_header.e_entry;
 				break;
 		}
@@ -117,15 +106,15 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_
 	sp -= (argc + 1) * sizeof(char *);
 	memcpy((void *)sp, argv, (argc + 1) * sizeof(char *));
 	// argc
-	sp -= sizeof(int);
-	memcpy((void *)sp, &argc, sizeof(int));
+	sp -= sizeof(char *);
+	*(long long *)sp = (long long)argc;
 	
 
-	/* // debug
+	/*// debug
 	Elf64_Addr q = (Elf64_Addr)sp;
-	printf("argc : %d\n", *(int *)q);
-	q += sizeof(int);
-	i = 0;
+	printf("argc : %lld\n", *(long long *)q);
+	q += sizeof(char *);
+	int i = 0;
 	for (char **p = (char **)q; ; p++, i++) {
 		if (!*p) {
 			q = (Elf64_Addr)++p;
@@ -148,8 +137,8 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_
 			break;
 		}
 	}
-    puts("");
-	 */
+    puts("");*/
+	
 
 	//sp -= sizeof(Elf64_Addr);
 
@@ -243,7 +232,7 @@ void *elf_map_bss(Elf64_Addr start, Elf64_Addr end, int prot, int flags)
 }
 
 
-Elf64_Ehdr load_elf_binary(int fd)
+Elf64_Ehdr load_elf_binary(int fd, Elf64_Addr *load_addr)
 {
 	Elf64_Ehdr elf_header;
 
@@ -251,6 +240,9 @@ Elf64_Ehdr load_elf_binary(int fd)
 	Elf64_Addr elf_bss, elf_brk;
 	int elf_prot;
 	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// ET_EXEC only
+
+	int load_addr_set = 0;
+	*load_addr = 0;
 
 
 	// ELF header
@@ -281,6 +273,10 @@ Elf64_Ehdr load_elf_binary(int fd)
 		if (program_header_entry.p_flags & PF_X)	elf_prot |= PROT_EXEC;
 		
 		elf_map(program_header_entry.p_vaddr, program_header_entry.p_filesz, elf_prot, elf_flags, fd, program_header_entry.p_offset);
+		if (!load_addr_set) {
+			load_addr_set = 1;
+			*load_addr = program_header_entry.p_vaddr - program_header_entry.p_offset;
+		}
 
         // .bss
         elf_bss = program_header_entry.p_vaddr + program_header_entry.p_filesz;
@@ -291,23 +287,6 @@ Elf64_Ehdr load_elf_binary(int fd)
     }
 
 	return elf_header;
-	
-	
-
-
-	/*bprm->p -= MAX_ARG_PAGES * PAGE_SIZE;
-	create_elf_tables((char *)bprm->p, bprm->argc, bprm->envc, load_addr);
-
-	sys_brk((elf_brk + 0xfff) & 0xfffff000);
-
-	padzero(elf_bss);
-
-	error = do_mmap(NULL, 0, 4096, PROT_READ | PROT_EXEC,
-			MAP_FIXED | MAP_PRIVATE, 0);
-
-	regs->eip = elf_entry;		// eip, magic happens :-)
-	regs->esp = bprm->p;			// stack pointer
-	return 0;*/
 }
 
 int my_execve(const char *path, char *argv[], char *envp[])
@@ -321,8 +300,10 @@ int my_execve(const char *path, char *argv[], char *envp[])
         exit(1);
     }
 
-	elf_header = load_elf_binary(fd);
-	stack_top = create_elf_tables(argv, envp, fd, elf_header);
+	Elf64_Addr load_addr;
+
+	elf_header = load_elf_binary(fd, &load_addr);
+	stack_top = create_elf_tables(argv, envp, fd, elf_header, load_addr);
 
 	puts("");
 	printf("Entry address: %#lx\n", elf_header.e_entry);
