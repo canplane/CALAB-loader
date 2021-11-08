@@ -31,7 +31,7 @@
 extern int errno;
 
 
-int create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_header)
+Elf64_Addr create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_header)
 {
 	Elf64_auxv_t *auxv;
 	int argc, envc, auxc;
@@ -151,8 +151,9 @@ int create_elf_tables(char *argv[], char *envp[], int fd, Elf64_Ehdr elf_header)
     puts("");
 	 */
 
+	//sp -= sizeof(Elf64_Addr);
 
-	return 0;
+	return sp;
 }
 
 
@@ -313,6 +314,7 @@ int my_execve(const char *path, char *argv[], char *envp[])
 {
 	int fd;
 	Elf64_Ehdr elf_header;
+	Elf64_Addr stack_top;
 
     if ((fd = open(argv[0], O_RDONLY)) == -1) {
         fprintf(stderr, "Error: open: %s\n", strerror(errno));
@@ -320,7 +322,18 @@ int my_execve(const char *path, char *argv[], char *envp[])
     }
 
 	elf_header = load_elf_binary(fd);
-	create_elf_tables(argv, envp, fd, elf_header);
+	stack_top = create_elf_tables(argv, envp, fd, elf_header);
+
+	puts("");
+	printf("Entry address: %#lx\n", elf_header.e_entry);
+	
+	asm("movq $0, %rax");
+	asm("movq $0, %rcx");
+	asm("movq $0, %rdx");
+	asm("movq $0, %rbx");
+	asm("movq %0, %%rsp" : : "r" (stack_top));
+	asm("jmp *%0" : : "c" (elf_header.e_entry));
+
     
     // debug
     /*
