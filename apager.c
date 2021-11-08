@@ -2,7 +2,7 @@
 
 // gcc -S test.c -> test.s
 // gcc -c test.c -> test.o
-// od -t x1 test.o
+// od -A x -t x1 test.o
 // readelf [-h | -l] test.o
 // objdump -d test.o
 
