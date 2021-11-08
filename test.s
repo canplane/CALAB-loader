@@ -1,5 +1,18 @@
 	.file	"test.c"
 	.text
+	.comm	a,4,4
+	.globl	b
+	.data
+	.align 4
+	.type	b, @object
+	.size	b, 4
+b:
+	.long	2
+	.globl	s
+	.type	s, @object
+	.size	s, 4
+s:
+	.string	"foo"
 	.section	.rodata
 .LC0:
 	.string	"Hello World!"
