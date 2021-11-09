@@ -1,15 +1,15 @@
-all: test apager dpager
+all: apager dpager test
 
 apager: apager.c
-	gcc -static -Wl,-Ttext-segment=0x20000000 -o apager.c apager
+	gcc -static -Wl,-Ttext-segment=0x20000000 apager.c -o apager
 
 dpager: dpager.c
-	gcc -static -Wl,-Ttext-segment=0x20000000 -o dpager.c dpager
+	gcc -static -Wl,-Ttext-segment=0x20000000 dpager.c -o dpager
 
 test: test.c
-	gcc -static -o test.c test
+	gcc -static test.c -o test
 
 clean:
-	rm -f apager
-	rm -f dpager
-	rm -f test
+	rm apager
+	rm dpager
+	rm test
