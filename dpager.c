@@ -11,6 +11,10 @@
 
 extern int errno;
 
+////
+#include <signal.h>
+////
+
 #define MIN2(a, b)			((a) > (b) ? (b) : (a))
 
 // adapted from linux/fs/binfmt_elf.c
@@ -158,6 +162,7 @@ void print_stack(const char **argv)
 int fd;
 Elf64_Ehdr e_header;
 Elf64_Phdr *p_headers;
+Elf64_Addr load_addr;
 
 
 void *elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
@@ -182,8 +187,31 @@ void *elf_map_bss(Elf64_Addr addr, size_t len, int prot, int flags)
 	fprintf(stderr, "Mapping: .bss -> [%#lx, %#lx) (size = %#lx)\n", addr, addr + len, len);
 	return mmap((void *)addr, len, prot, flags | MAP_ANONYMOUS, -1, 0);
 }
+void map_segment(int idx) {
+	int elf_prot;
+	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
 
-int load_elf_binary(const char *path, Elf64_Addr *load_addr)
+	elf_prot = 0;
+	if (p_headers[idx].p_flags & PF_R)	elf_prot |= PROT_READ;
+	if (p_headers[idx].p_flags & PF_W)	elf_prot |= PROT_WRITE;
+	if (p_headers[idx].p_flags & PF_X)	elf_prot |= PROT_EXEC;
+
+	if (elf_map(p_headers[idx].p_vaddr, p_headers[idx].p_filesz, elf_prot, elf_flags, fd, p_headers[idx].p_offset) == MAP_FAILED) {
+		perror("Error: Memory mapping failed");
+		exit(1);
+	}
+	
+	// .bss
+	if (p_headers[idx].p_filesz < p_headers[idx].p_memsz) {
+		if (elf_map_bss(p_headers[idx].p_vaddr + p_headers[idx].p_filesz, p_headers[idx].p_memsz - p_headers[idx].p_filesz, elf_prot, elf_flags) == MAP_FAILED) {
+			perror("Error: Memory mapping failed");
+			exit(1);
+		}
+	}
+}
+
+
+void load_elf_binary(const char *path)
 {
 	/* open the program */
 
@@ -230,42 +258,39 @@ int load_elf_binary(const char *path, Elf64_Addr *load_addr)
 		exit(1);
 	}
 
-	int elf_prot;
-	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
 
-	*load_addr = (Elf64_Addr)-1;
+	/* calculate load address */
+
+	load_addr = (Elf64_Addr)-1;
 	for (int i = 0; i < e_header.e_phnum; i++) {
 		//print_p_header(i, &p_headers[i]);
 
 		if (p_headers[i].p_type != PT_LOAD)
             continue;
-		*load_addr = MIN2(*load_addr, p_headers[i].p_vaddr - p_headers[i].p_offset);
-		
-		elf_prot = 0;
-		if (p_headers[i].p_flags & PF_R)	elf_prot |= PROT_READ;
-		if (p_headers[i].p_flags & PF_W)	elf_prot |= PROT_WRITE;
-		if (p_headers[i].p_flags & PF_X)	elf_prot |= PROT_EXEC;
+		load_addr = MIN2(load_addr, p_headers[i].p_vaddr - p_headers[i].p_offset);
+	}
+}
+void segfault_sigaction(int signo, siginfo_t *si, void *arg)
+{
+	Elf64_Addr addr = (Elf64_Addr)si->si_addr;
+    fprintf(stderr, "(Caught segfault at address %#lx)\n", addr);
 
-		if (elf_map(p_headers[i].p_vaddr, p_headers[i].p_filesz, elf_prot, elf_flags, fd, p_headers[i].p_offset) == MAP_FAILED) {
-			perror("Error: Memory mapping failed");
-			exit(1);
-		}
-		
-		// .bss
-        if (p_headers[i].p_filesz < p_headers[i].p_memsz) {
-			if (elf_map_bss(p_headers[i].p_vaddr + p_headers[i].p_filesz, p_headers[i].p_memsz - p_headers[i].p_filesz, elf_prot, elf_flags) == MAP_FAILED) {
-				perror("Error: Memory mapping failed");
-				exit(1);
-			}
-		}
+	for (int i = 0; i < e_header.e_phnum; i++) {
+		if (p_headers[i].p_type != PT_LOAD)
+            continue;
+		if (!(p_headers[i].p_vaddr <= addr && addr < p_headers[i].p_vaddr + p_headers[i].p_memsz))
+			continue;
+
+		map_segment(i);
+		return;
 	}
 
-	close(fd);
-	return 0;
+	fprintf(stderr, "Invalid access at address %#lx\n", addr);
+	exit(1);
 }
 
 
-Elf64_Addr create_elf_tables(const char *argv[], const char *envp[], Elf64_Addr load_addr)
+Elf64_Addr create_elf_tables(const char *argv[], const char *envp[])
 {
 	int i;
 
@@ -409,15 +434,26 @@ void start_thread(Elf64_Addr entry, Elf64_Addr sp)
 		: : "a" (sp), "b" (entry)
 	);
 }
-
-
 int my_execve(const char *path, const char *argv[], const char *envp[])
 {
-	Elf64_Addr sp;
-	Elf64_Addr load_addr;
+	/* set signal handler for segmentation fault */
 
-	load_elf_binary(path, &load_addr);
-	sp = create_elf_tables(argv, envp, load_addr);
+	struct sigaction sa;
+
+    memset(&sa, 0, sizeof(struct sigaction));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_sigaction = segfault_sigaction;
+    sa.sa_flags = SA_SIGINFO;
+
+    sigaction(SIGSEGV, &sa, NULL);
+	
+	
+	/* */
+
+	Elf64_Addr sp;
+
+	load_elf_binary(path);
+	sp = create_elf_tables(argv, envp);
 	//print_stack((const char **)(sp + sizeof(int64_t)));
 
 	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);

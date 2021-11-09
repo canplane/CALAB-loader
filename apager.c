@@ -24,6 +24,7 @@ extern int errno;
 #define STACK_HIGH			(STACK_LOW + STACK_SIZE)
 
 
+/*
 void print_e_header(const Elf64_Ehdr *e)
 {
 	fprintf(stderr, "ELF header {\n");
@@ -151,11 +152,13 @@ void print_stack(const char **argv)
 	}
 	printf("auxc = %d\n", auxc);
 }
+ */
 
 
 int fd;
 Elf64_Ehdr e_header;
 Elf64_Phdr *p_headers;
+Elf64_Addr load_addr;
 
 
 void *elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
@@ -181,7 +184,30 @@ void *elf_map_bss(Elf64_Addr addr, size_t len, int prot, int flags)
 	return mmap((void *)addr, len, prot, flags | MAP_ANONYMOUS, -1, 0);
 }
 
-int load_elf_binary(const char *path, Elf64_Addr *load_addr)
+void map_segment(int idx) {
+	int elf_prot = 0;
+	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
+
+	if (p_headers[idx].p_flags & PF_R)	elf_prot |= PROT_READ;
+	if (p_headers[idx].p_flags & PF_W)	elf_prot |= PROT_WRITE;
+	if (p_headers[idx].p_flags & PF_X)	elf_prot |= PROT_EXEC;
+
+	if (elf_map(p_headers[idx].p_vaddr, p_headers[idx].p_filesz, elf_prot, elf_flags, fd, p_headers[idx].p_offset) == MAP_FAILED) {
+		perror("Error: Memory mapping failed");
+		exit(1);
+	}
+	
+	// .bss
+	if (p_headers[idx].p_filesz < p_headers[idx].p_memsz) {
+		if (elf_map_bss(p_headers[idx].p_vaddr + p_headers[idx].p_filesz, p_headers[idx].p_memsz - p_headers[idx].p_filesz, elf_prot, elf_flags) == MAP_FAILED) {
+			perror("Error: Memory mapping failed");
+			exit(1);
+		}
+	}
+}
+
+
+void load_elf_binary(const char *path)
 {
 	/* open the program */
 
@@ -220,7 +246,7 @@ int load_elf_binary(const char *path, Elf64_Addr *load_addr)
 		exit(1);
 	}
 	if (lseek(fd, e_header.e_phoff, SEEK_SET) == -1) {
-		perror("Error: lseek()");
+		perror("Error: lseek() failed");
 		exit(1);
 	}
 	if (read(fd, p_headers, e_header.e_phnum * sizeof(Elf64_Phdr)) == -1) {
@@ -228,42 +254,25 @@ int load_elf_binary(const char *path, Elf64_Addr *load_addr)
 		exit(1);
 	}
 
-	int elf_prot;
-	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
+	
+	/* calculate load address and map into memory */
 
-	*load_addr = (Elf64_Addr)-1;
+	load_addr = (Elf64_Addr)-1;
 	for (int i = 0; i < e_header.e_phnum; i++) {
 		//print_p_header(i, &p_headers[i]);
 
 		if (p_headers[i].p_type != PT_LOAD)
             continue;
-		*load_addr = MIN2(*load_addr, p_headers[i].p_vaddr - p_headers[i].p_offset);
+		load_addr = MIN2(load_addr, p_headers[i].p_vaddr - p_headers[i].p_offset);
 		
-		elf_prot = 0;
-		if (p_headers[i].p_flags & PF_R)	elf_prot |= PROT_READ;
-		if (p_headers[i].p_flags & PF_W)	elf_prot |= PROT_WRITE;
-		if (p_headers[i].p_flags & PF_X)	elf_prot |= PROT_EXEC;
-
-		if (elf_map(p_headers[i].p_vaddr, p_headers[i].p_filesz, elf_prot, elf_flags, fd, p_headers[i].p_offset) == MAP_FAILED) {
-			perror("Error: Memory mapping failed");
-			exit(1);
-		}
-		
-		// .bss
-        if (p_headers[i].p_filesz < p_headers[i].p_memsz) {
-			if (elf_map_bss(p_headers[i].p_vaddr + p_headers[i].p_filesz, p_headers[i].p_memsz - p_headers[i].p_filesz, elf_prot, elf_flags) == MAP_FAILED) {
-				perror("Error: Memory mapping failed");
-				exit(1);
-			}
-		}
+		map_segment(i);
 	}
 
 	close(fd);
-	return 0;
 }
 
 
-Elf64_Addr create_elf_tables(const char *argv[], const char *envp[], Elf64_Addr load_addr)
+Elf64_Addr create_elf_tables(const char *argv[], const char *envp[])
 {
 	int i;
 
@@ -407,15 +416,12 @@ void start_thread(Elf64_Addr entry, Elf64_Addr sp)
 		: : "a" (sp), "b" (entry)
 	);
 }
-
-
 int my_execve(const char *path, const char *argv[], const char *envp[])
 {
 	Elf64_Addr sp;
 
-	Elf64_Addr load_addr;
-	load_elf_binary(path, &load_addr);
-	sp = create_elf_tables(argv, envp, load_addr);
+	load_elf_binary(path);
+	sp = create_elf_tables(argv, envp);
 	//print_stack((const char **)(sp + sizeof(int64_t)));
 
 	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);
@@ -425,7 +431,7 @@ int my_execve(const char *path, const char *argv[], const char *envp[])
 
 	return -1;
 }
-#define execve my_execve
+#define execve 				my_execve
 
 
 int main(int argc, const char **argv, const char **envp)
