@@ -91,7 +91,10 @@ void print_stack(Elf64_Addr sp)
 		;
 	auxc = i;
 	printf("auxc = %d\n", auxc);
+
+    puts("");
 }
+
 
 
 int elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
@@ -129,6 +132,7 @@ int elf_map_bss(Elf64_Addr start, Elf64_Addr end, int prot, int flags)
 	fprintf(stderr, "Mapping: .bss -> [%#lx, %#lx) (size: %ld)\n", start, end, end - start);
     return 0;
 }
+
 int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load_addr)
 {
 	/* open the program */
@@ -168,7 +172,7 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 	Elf64_Addr bss_start, bss_end;
 
 	int elf_prot;
-	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
+	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// ET_EXEC only
 
 	int load_addr_set = 0;
 	*load_addr = 0;
@@ -214,6 +218,153 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 }
 
 
+
+
+
+
+
+
+
+
+/*Elf64_Addr _create_elf_tables(char *argv[], char *envp[], Elf64_Ehdr *elf_header_p, Elf64_Addr load_addr)
+{
+	int8_t *sp, *stack_top;
+	int8_t *arg_start, *arg_end, *env_start, *env_end;
+
+
+	int argc;
+	argc = 0;
+	for (char **p = argv; *p; p++)
+		argc++;
+	
+
+
+	size_t len;
+
+#define STACK_ADD(sp, items) ((Elf64_Addr *)(sp) - (items))
+#define STACK_ROUND(sp, items) \
+	(((unsigned long) ((Elf64_Addr *) (sp) - (items))) &~ 15UL)
+#define STACK_ALLOC(sp, len) ({ sp -= len ; sp; })
+
+#define arch_align_stack(p) ((unsigned long)(p) & ~0xf)
+	
+	//// init_stack
+	int prot = PROT_READ | PROT_WRITE;
+	int flags = MAP_FIXED | MAP_ANONYMOUS | MAP_GROWSDOWN | MAP_PRIVATE;
+	sp = mmap((void *) STACK_LOW, STACK_SIZE, prot, flags, -1 ,0);
+	if (sp == MAP_FAILED) {
+		fprintf(stderr, "mmap error in %s\n", __func__);
+		return -1;
+	}
+	memset(sp, 0, STACK_SIZE);
+	sp = (Elf64_Addr) STACK_HIGH;
+	// NULL pointer
+	STACK_ADD(sp, 1); 
+
+	// push env to stack
+	len = strnlen("ENVVAR2=2", PAGE_SIZE);
+	sp -= (len + 1);
+	env_end = sp;
+	memcpy(sp, "ENVVAR2=2", len + 1);
+	len = strnlen("ENVVAR1=1", PAGE_SIZE);
+	sp -= (len + 1);
+	memcpy(sp, "ENVVAR=1", len + 1);
+	env_start = sp;
+
+	// push args to stack
+	for (int i = argc - 1; i > 0; i--) {
+		len = strnlen(argv[i], PAGE_SIZE);
+		sp = ((char *) sp) - (len + 1);
+		if (i == argc - 1)
+			arg_end = sp;
+		if (i == 1)
+			arg_start = sp;
+		memcpy(sp, argv[i], len + 1);
+	}
+	////
+
+	int items, envc = 0;
+	int i;
+	int8_t *p;
+
+#define AT_VECTOR_SIZE_BASE	20
+#define AT_VECTOR_SIZE (2*(AT_VECTOR_SIZE_BASE + 1))
+	Elf64_auxv_t elf_info[AT_VECTOR_SIZE];
+	Elf64_auxv_t *auxv;
+	int ei_index = 0;
+
+	memset(elf_info, 0, sizeof(elf_info));
+	sp = (int8_t *) arch_align_stack(sp);
+
+
+	// Copy Loaders AT_VECTOR
+	while (*envp++ != NULL)
+		;
+	for (auxv = (Elf64_auxv_t *) envp; auxv->a_type != AT_NULL;
+			auxv++, ei_index++) {
+		elf_info[ei_index] = *auxv;
+		if (auxv->a_type == AT_PHDR)
+			elf_info[ei_index].a_un.a_val = 0;
+		else if (auxv->a_type == AT_ENTRY)
+			elf_info[ei_index].a_un.a_val = elf_header_p->e_entry;
+		else if (auxv->a_type == AT_PHNUM)
+			elf_info[ei_index].a_un.a_val = elf_header_p->e_phnum;
+
+	}
+
+
+	// Advance past the AT_NULL entry.
+	ei_index += 2;
+	sp = (int8_t *) STACK_ADD(sp, ei_index * 2);
+
+	envc = 2;
+	items = (argc + 1) + (envc + 1) + 1;
+	sp = (int8_t *) STACK_ROUND(sp, items);
+	stack_top = sp;
+
+
+
+	// Now, let's put argc (and argv, envp if appropriate) on the stack
+	*((long *) sp) = (long) argc - 1;
+	sp += 8;
+
+
+	// Populate list of argv pointers back to argv strings.
+	p = arg_start;
+	for (i = 0; i < argc - 1; i++) {
+		*((unsigned long *) sp) = (unsigned long) p;
+		len = strnlen(p, PAGE_SIZE);
+		sp += 8;
+		p += len + 1;
+	}
+	*((unsigned long *) sp) = NULL;
+	sp += 8;
+
+
+	// Populate list of envp pointers back to envp strings.
+	p = env_start;
+	for (i = 0; i < envc; i++) {
+		*((unsigned long *) sp) = (unsigned long) p;
+		len = strnlen(p, PAGE_SIZE);
+		sp += 8;
+		p += len;
+	}
+	*((unsigned long *) sp) = NULL;
+	sp += 8;
+
+	// Put the elf_info on the stack in the right place.
+	memcpy(sp, elf_info, sizeof(Elf64_auxv_t) * ei_index);
+
+
+
+	
+	return (Elf64_Addr)stack_top;
+}*/
+
+
+
+
+// my
 Elf64_Addr create_elf_tables(char *argv[], char *envp[], Elf64_Ehdr *elf_header_p, Elf64_Addr load_addr)
 {
 	int i;
@@ -326,24 +477,10 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], Elf64_Ehdr *elf_header_
 }
 
 
+
+
 void start_thread(Elf64_Addr entry, Elf64_Addr sp)
 {
-		/*
-...8:	argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
-...0:	argc					[]			[]			[]
-											%rax		%rax
-														&(%rax)
-		// %r9 = %rdx
-					// %rsi = argc
-					// %rdx = (%rsp = &argv[0])
-														// %r8  = _libc_csu_fini
-														// %rcx = _libc_csu_init
-														// %rdi = main
-
-		_libc_start_main(
-			%rdi=main, %rsi=argc, %rdx=argv, %rcx=_libc_csu_init, %r8=_libc_csu_fini, %r9
-		)
-	 */
 	__asm__ __volatile__ (
 		"movq $0, %%rdx\n\t"
 		"movq %0, %%rsp\n\t"
@@ -351,8 +488,6 @@ void start_thread(Elf64_Addr entry, Elf64_Addr sp)
 		: : "a" (sp), "b" (entry)
 	);
 }
-
-
 int my_execve(const char *path, char *argv[], char *envp[])
 {
 	Elf64_Ehdr elf_header;
@@ -361,11 +496,15 @@ int my_execve(const char *path, char *argv[], char *envp[])
 	Elf64_Addr load_addr;
 	load_elf_binary(path, &elf_header, &load_addr);
 	sp = create_elf_tables(argv, envp, &elf_header, load_addr);
-	//print_stack(sp);	// debug
+	//print_stack(sp);
 
 	puts("");
-	printf("Executing ’%s’... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, elf_header.e_entry);
-	printf("--------\n");
+	printf("Stack pointer = %#lx\n", sp);
+	printf("Entry address = %#lx\n", elf_header.e_entry);
+	
+	puts("");
+	printf("----\n");
+	puts("");
 
 	// context switch
 	start_thread(elf_header.e_entry, sp);

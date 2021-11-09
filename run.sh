@@ -1,5 +1,5 @@
 #!/bin/sh
 
-cc apager.c -o apager.out
-cc -static test.c -o test.out
-./apager.out test.out
+cc -Wall -Wl,-Ttext-segment=0x30000000 apager.c -o apager
+cc -static test.c -o test
+./apager test a b c\ d e
