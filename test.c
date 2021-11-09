@@ -3,7 +3,7 @@
 
 int a;              // .bss: unintialized static variables
 int b = 2;          // .data: initialized static variables
-char s[] = "foo";   // .rodata
+char *s = "foo";   // .rodata
 
 int main()
 {

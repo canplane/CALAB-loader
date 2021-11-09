@@ -184,13 +184,15 @@ void *elf_map_bss(Elf64_Addr addr, size_t len, int prot, int flags)
 	return mmap((void *)addr, len, prot, flags | MAP_ANONYMOUS, -1, 0);
 }
 
+
 void map_segment(int idx) {
 	int elf_prot = 0;
-	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
-
 	if (p_headers[idx].p_flags & PF_R)	elf_prot |= PROT_READ;
 	if (p_headers[idx].p_flags & PF_W)	elf_prot |= PROT_WRITE;
 	if (p_headers[idx].p_flags & PF_X)	elf_prot |= PROT_EXEC;
+
+	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
+
 
 	if (elf_map(p_headers[idx].p_vaddr, p_headers[idx].p_filesz, elf_prot, elf_flags, fd, p_headers[idx].p_offset) == MAP_FAILED) {
 		perror("Error: Memory mapping failed");

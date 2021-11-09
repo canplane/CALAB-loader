@@ -1,13 +1,13 @@
-all: apager dpager
+all: test apager dpager
 
 apager: apager.c
-	cc -Wall -Wl,-Ttext-segment=0x30000000 apager.c -o apager
+	gcc -static -Wl,-Ttext-segment=0x20000000 -o apager.c apager
 
 dpager: dpager.c
-	cc dpager.c -o dpager
+	gcc -static -Wl,-Ttext-segment=0x20000000 -o dpager.c dpager
 
 test: test.c
-	cc -static test.c -o test
+	gcc -static -o test.c test
 
 clean:
 	rm -f apager

@@ -28,7 +28,6 @@ extern int errno;
 #define STACK_HIGH			(STACK_LOW + STACK_SIZE)
 
 
-/*
 void print_e_header(const Elf64_Ehdr *e)
 {
 	fprintf(stderr, "ELF header {\n");
@@ -48,17 +47,17 @@ void print_e_header(const Elf64_Ehdr *e)
     fprintf(stderr, "\tElf64_Half \te_shstrndx \t= %u\n", e->e_shentsize);		// Section name string table index
 	fprintf(stderr, "}\n");
 }
-void print_p_header(int idx, const Elf64_Phdr *p)
+void print_p_header(const Elf64_Phdr *p, int idx)
 {
 	fprintf(stderr, "Program header entry [%d] {\n", idx);
-    fprintf(stderr, "\tElf64_Word \tp_type \t\t= %#x\n", p->p_type);			// Type of segment
-    fprintf(stderr, "\tElf64_Word \tp_flags \t= %#x\n", p->p_flags);			// Segment attributes
-    fprintf(stderr, "\tElf64_Off \tp_offset \t= %#lx\n", p->p_offset);			// Offset in file
-    fprintf(stderr, "\tElf64_Addr \tp_vaddr \t= %#lx\n", p->p_vaddr);			// Virtual address in memory
-    //fprintf(stderr, "\tElf64_Addr \tp_paddr \t= %#lx\n", p->p_paddr);			// Reserved
-    fprintf(stderr, "\tElf64_Xword \tp_filesz \t= %#lx\n", p->p_filesz);		// Size of segment in file
-    fprintf(stderr, "\tElf64_Xword \tp_memsz \t= %#lx\n", p->p_memsz);			// Size of segment in memory
-    fprintf(stderr, "\tElf64_Xword \tp_align \t= %#lx\n", p->p_align);			// Alignment of segment
+    fprintf(stderr, "\tElf64_Word \tp_type \t\t= %#x\n", p[idx].p_type);		// Type of segment
+    fprintf(stderr, "\tElf64_Word \tp_flags \t= %#x\n", p[idx].p_flags);		// Segment attributes
+    fprintf(stderr, "\tElf64_Off \tp_offset \t= %#lx\n", p[idx].p_offset);		// Offset in file
+    fprintf(stderr, "\tElf64_Addr \tp_vaddr \t= %#lx\n", p[idx].p_vaddr);		// Virtual address in memory
+    //fprintf(stderr, "\tElf64_Addr \tp_paddr \t= %#lx\n", p[idx].p_paddr);		// Reserved
+    fprintf(stderr, "\tElf64_Xword \tp_filesz \t= %#lx\n", p[idx].p_filesz);	// Size of segment in file
+    fprintf(stderr, "\tElf64_Xword \tp_memsz \t= %#lx\n", p[idx].p_memsz);		// Size of segment in memory
+    fprintf(stderr, "\tElf64_Xword \tp_align \t= %#lx\n", p[idx].p_align);		// Alignment of segment
 	fprintf(stderr, "}\n");
 }
 void print_stack(const char **argv)
@@ -156,59 +155,13 @@ void print_stack(const char **argv)
 	}
 	printf("auxc = %d\n", auxc);
 }
- */
+
 
 
 int fd;
 Elf64_Ehdr e_header;
 Elf64_Phdr *p_headers;
 Elf64_Addr load_addr;
-
-
-void *elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
-{
-	// Loadable process segments must have congruent values for p_vaddr and p_offset, modulo the page size.
-	addr = PAGE_FLOOR(addr), offset = PAGE_FLOOR(offset), len = PAGE_CEIL(PAGE_OFFSET(addr) + len);
-	
-	fprintf(stderr, "Mapping: offset [%#lx, %#lx) -> [%#lx, %#lx) (size = %#lx)\n", offset, offset + len, addr, addr + len, len);
-	return mmap((void *)addr, len, prot, flags, fd, offset);
-}
-// read-write zero-initialized anonymous memory
-void *elf_map_bss(Elf64_Addr addr, size_t len, int prot, int flags)
-{
-	Elf64_Addr _addr = addr;
-	addr = PAGE_CEIL(_addr), len = PAGE_CEIL(_addr + len) - PAGE_CEIL(_addr);
-
-	if (_addr < addr)
-		memset((void *)_addr, 0, addr - _addr);		// zero-fill
-	if (!len)
-		return NULL;
-	
-	fprintf(stderr, "Mapping: .bss -> [%#lx, %#lx) (size = %#lx)\n", addr, addr + len, len);
-	return mmap((void *)addr, len, prot, flags | MAP_ANONYMOUS, -1, 0);
-}
-void map_segment(int idx) {
-	int elf_prot;
-	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
-
-	elf_prot = 0;
-	if (p_headers[idx].p_flags & PF_R)	elf_prot |= PROT_READ;
-	if (p_headers[idx].p_flags & PF_W)	elf_prot |= PROT_WRITE;
-	if (p_headers[idx].p_flags & PF_X)	elf_prot |= PROT_EXEC;
-
-	if (elf_map(p_headers[idx].p_vaddr, p_headers[idx].p_filesz, elf_prot, elf_flags, fd, p_headers[idx].p_offset) == MAP_FAILED) {
-		perror("Error: Memory mapping failed");
-		exit(1);
-	}
-	
-	// .bss
-	if (p_headers[idx].p_filesz < p_headers[idx].p_memsz) {
-		if (elf_map_bss(p_headers[idx].p_vaddr + p_headers[idx].p_filesz, p_headers[idx].p_memsz - p_headers[idx].p_filesz, elf_prot, elf_flags) == MAP_FAILED) {
-			perror("Error: Memory mapping failed");
-			exit(1);
-		}
-	}
-}
 
 
 void load_elf_binary(const char *path)
@@ -263,29 +216,69 @@ void load_elf_binary(const char *path)
 
 	load_addr = (Elf64_Addr)-1;
 	for (int i = 0; i < e_header.e_phnum; i++) {
-		//print_p_header(i, &p_headers[i]);
+		//print_p_header(p_headers, i);
 
 		if (p_headers[i].p_type != PT_LOAD)
             continue;
 		load_addr = MIN2(load_addr, p_headers[i].p_vaddr - p_headers[i].p_offset);
 	}
 }
+
+
+void map_addr(Elf64_Addr addr, int idx) {
+	int elf_prot = 0;
+	if (p_headers[idx].p_flags & PF_R)	elf_prot |= PROT_READ;
+	if (p_headers[idx].p_flags & PF_W)	elf_prot |= PROT_WRITE;
+	if (p_headers[idx].p_flags & PF_X)	elf_prot |= PROT_EXEC;
+
+	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
+
+	Elf64_Addr bss_start, bss_end;
+	bss_start = p_headers[idx].p_vaddr + p_headers[idx].p_filesz;
+	bss_end = p_headers[idx].p_vaddr + p_headers[idx].p_memsz;
+
+	Elf64_Addr page_start, page_end, offset;
+	page_start = PAGE_FLOOR(addr);
+	page_end = page_start + PAGE_SIZE;
+	offset = PAGE_FLOOR(p_headers[idx].p_offset + (addr - p_headers[idx].p_vaddr));
+
+	
+	void *ret;
+	if (bss_start <= page_start) {
+		fprintf(stderr, "Mapping: .bss -> (memory address = %#lx, size = %#x)\n", page_start, PAGE_SIZE);
+		ret = mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags | MAP_ANONYMOUS, -1, 0);
+	}
+	else if (page_end <= bss_start) {
+		fprintf(stderr, "Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#x)\n", offset, page_start, PAGE_SIZE);
+		ret = mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, fd, offset);
+	}
+	else {	// page_start < bss_start < page_end
+		fprintf(stderr, "Mapping: (file offset = %#lx) with .bss -> (memory address = %#lx, size = %#x)\n", offset, page_start, PAGE_SIZE);
+		ret = mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, fd, offset);
+		if (bss_start < bss_end)
+			memset((void *)bss_start, 0, PAGE_CEIL(bss_start) - bss_start);		// zero-fill
+	}
+	if (ret == MAP_FAILED) {
+		perror("Error: Memory mapping failed");
+		exit(1);
+	}
+}
 void segfault_sigaction(int signo, siginfo_t *si, void *arg)
 {
 	Elf64_Addr addr = (Elf64_Addr)si->si_addr;
-    fprintf(stderr, "(Caught segfault at address %#lx)\n", addr);
+    fprintf(stderr, "< Caught segfault at address %#lx >\n", addr);
 
 	for (int i = 0; i < e_header.e_phnum; i++) {
 		if (p_headers[i].p_type != PT_LOAD)
             continue;
-		if (!(p_headers[i].p_vaddr <= addr && addr < p_headers[i].p_vaddr + p_headers[i].p_memsz))
+		if (!((p_headers[i].p_vaddr <= addr) && (addr < p_headers[i].p_vaddr + p_headers[i].p_memsz)))
 			continue;
 
-		map_segment(i);
+		map_addr(addr, i);
 		return;
 	}
 
-	fprintf(stderr, "Invalid access at address %#lx\n", addr);
+	fprintf(stderr, "Error: Invalid access at address %#lx\n", addr);
 	exit(1);
 }
 
@@ -315,6 +308,7 @@ Elf64_Addr create_elf_tables(const char *argv[], const char *envp[])
 	for (i = 0; auxv[i].a_type != AT_NULL; i++)
 		;
 	auxc = i;
+
 
 
 	/* allocate new stack space -> [STACK_LOW, STACK_LOW + STACK_SIZE) */
@@ -365,25 +359,17 @@ Elf64_Addr create_elf_tables(const char *argv[], const char *envp[])
 	for (i = 0; i < auxc; i++) {							// auxv
 		new_auxv[i] = auxv[i];
 		switch (auxv[i].a_type) {
-			case AT_EXECFD:			// 2: File descriptor of program
-				auxv[i].a_type = AT_IGNORE;
-				//fprintf(stderr, "Auxiliary vector modified: AT_EXECFD: %ld -> ignored\n", auxv[i].a_un.a_val);
-				break;
-			case AT_PHDR:			// 3: Program headers for program
-				new_auxv[i].a_un.a_val = load_addr + e_header.e_phoff;
-				//fprintf(stderr, "Auxiliary vector modified: AT_PHDR: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
-				break;
 			case AT_PHNUM:			// 5: Number of program headers
 				new_auxv[i].a_un.a_val = e_header.e_phnum;
-				//fprintf(stderr, "Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				fprintf(stderr, "Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 			case AT_BASE:			// 7: Base address of interpreter
 				new_auxv[i].a_un.a_val = 0;
-				//fprintf(stderr, "Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				fprintf(stderr, "Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 			case AT_ENTRY:			// 9: Entry point of program
 				new_auxv[i].a_un.a_val = e_header.e_entry;
-				//fprintf(stderr, "Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				fprintf(stderr, "Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 		}
 	}
