@@ -18,12 +18,12 @@ extern int errno;
 #define MIN2(a, b)			((a) > (b) ? (b) : (a))
 
 // adapted from linux/fs/binfmt_elf.c
-#define PAGE_SIZE			(1 << 12)	// 4096 B
-#define PAGE_FLOOR(_addr)	((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
+#define PAGE_SIZE			(size_t)(1 << 12)	// 4096 B
+#define PAGE_FLOOR(_addr)	((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
 #define PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
 #define PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
-#define STACK_SIZE			(1 << 26)	// 8192 KB
+#define STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
 #define STACK_LOW			0x10000000L
 #define STACK_HIGH			(STACK_LOW + STACK_SIZE)
 
@@ -245,15 +245,15 @@ void map_addr(Elf64_Addr addr, int idx) {
 	
 	void *ret;
 	if (bss_start <= page_start) {
-		fprintf(stderr, "Mapping: .bss -> (memory address = %#lx, size = %#x)\n", page_start, PAGE_SIZE);
+		fprintf(stderr, "Mapping: .bss -> (memory address = %#lx, size = %#lx)\n", page_start, PAGE_SIZE);
 		ret = mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags | MAP_ANONYMOUS, -1, 0);
 	}
 	else if (page_end <= bss_start) {
-		fprintf(stderr, "Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#x)\n", offset, page_start, PAGE_SIZE);
+		fprintf(stderr, "Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n", offset, page_start, PAGE_SIZE);
 		ret = mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, fd, offset);
 	}
 	else {	// page_start < bss_start < page_end
-		fprintf(stderr, "Mapping: (file offset = %#lx) with .bss -> (memory address = %#lx, size = %#x)\n", offset, page_start, PAGE_SIZE);
+		fprintf(stderr, "Mapping: (file offset = %#lx) and .bss -> (memory address = %#lx, size = %#lx)\n", offset, page_start, PAGE_SIZE);
 		ret = mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, fd, offset);
 		if (bss_start < bss_end)
 			memset((void *)bss_start, 0, PAGE_CEIL(bss_start) - bss_start);		// zero-fill
@@ -310,12 +310,11 @@ Elf64_Addr create_elf_tables(const char *argv[], const char *envp[])
 	auxc = i;
 
 
-
 	/* allocate new stack space -> [STACK_LOW, STACK_LOW + STACK_SIZE) */
 
 	Elf64_Addr sp;
 
-	fprintf(stderr, "Mapping: stack -> [%#lx, %#lx) (size = %#lx)\n", STACK_LOW, STACK_LOW + STACK_SIZE, (size_t)STACK_SIZE);
+	fprintf(stderr, "Mapping: stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW, STACK_SIZE);
 	if (mmap((void *)STACK_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Memory mapping failed");
 		exit(1);

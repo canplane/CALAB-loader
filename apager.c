@@ -14,12 +14,12 @@ extern int errno;
 #define MIN2(a, b)			((a) > (b) ? (b) : (a))
 
 // adapted from linux/fs/binfmt_elf.c
-#define PAGE_SIZE			(1 << 12)	// 4096 B
-#define PAGE_FLOOR(_addr)	((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
+#define PAGE_SIZE			(size_t)(1 << 12)	// 4096 B
+#define PAGE_FLOOR(_addr)	((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
 #define PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
 #define PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
-#define STACK_SIZE			(1 << 26)	// 8192 KB
+#define STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
 #define STACK_LOW			0x10000000L
 #define STACK_HIGH			(STACK_LOW + STACK_SIZE)
 
@@ -166,7 +166,7 @@ void *elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t of
 	// Loadable process segments must have congruent values for p_vaddr and p_offset, modulo the page size.
 	addr = PAGE_FLOOR(addr), offset = PAGE_FLOOR(offset), len = PAGE_CEIL(PAGE_OFFSET(addr) + len);
 	
-	fprintf(stderr, "Mapping: offset [%#lx, %#lx) -> [%#lx, %#lx) (size = %#lx)\n", offset, offset + len, addr, addr + len, len);
+	fprintf(stderr, "Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n", offset, addr, len);
 	return mmap((void *)addr, len, prot, flags, fd, offset);
 }
 // read-write zero-initialized anonymous memory
@@ -180,7 +180,7 @@ void *elf_map_bss(Elf64_Addr addr, size_t len, int prot, int flags)
 	if (!len)
 		return NULL;
 	
-	fprintf(stderr, "Mapping: .bss -> [%#lx, %#lx) (size = %#lx)\n", addr, addr + len, len);
+	fprintf(stderr, "Mapping: .bss -> (memory address = %#lx, size = %#lx)\n", addr, len);
 	return mmap((void *)addr, len, prot, flags | MAP_ANONYMOUS, -1, 0);
 }
 
@@ -305,7 +305,7 @@ Elf64_Addr create_elf_tables(const char *argv[], const char *envp[])
 
 	Elf64_Addr sp;
 
-	fprintf(stderr, "Mapping: stack -> [%#lx, %#lx) (size = %#lx)\n", STACK_LOW, STACK_LOW + STACK_SIZE, (size_t)STACK_SIZE);
+	fprintf(stderr, "Mapping: stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW, STACK_SIZE);
 	if (mmap((void *)STACK_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Memory mapping failed");
 		exit(1);
