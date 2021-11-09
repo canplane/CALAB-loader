@@ -11,6 +11,7 @@
 
 extern int errno;
 
+#define MIN2(a, b)			((a) > (b) ? (b) : (a))
 
 // adapted from linux/fs/binfmt_elf.c
 #define PAGE_SIZE			(1 << 12)	// 4096 B
@@ -23,137 +24,190 @@ extern int errno;
 #define STACK_HIGH			(STACK_LOW + STACK_SIZE)
 
 
-void print_elf_header(Elf64_Ehdr *ep)
+void print_e_header(const Elf64_Ehdr *e)
 {
-	printf("ELF header {\n");
-	printf("\tunsigned char \te_ident[16]: \t%s\n", ep->e_ident);		// ELF identification
-    printf("\tElf64_Half \te_type: \t%#x\n", ep->e_type);				// Object file type
-    printf("\tElf64_Half \te_machine: \t%#x\n", ep->e_machine);			// Machine type
-    printf("\tElf64_Word \te_version: \t%u\n", ep->e_version);			// Object file version
-    printf("\tElf64_Addr \te_entry: \t%#lx\n", ep->e_entry);			// Entry point address
-	printf("\tElf64_Off \te_phoff: \t%#lx\n", ep->e_phoff);				// Program header offset
-	printf("\tElf64_Off \te_shoff: \t%#lx\n", ep->e_shoff);				// Section header offset
-    printf("\tElf64_Word \te_flags: \t%#x\n", ep->e_flags);				// Processor-specific flags
-    printf("\tElf64_Half \te_ehsize: \t%u\n", ep->e_ehsize);			// ELF header size
-    printf("\tElf64_Half \te_phentsize: \t%u\n", ep->e_phentsize);		// Size of program header entry
-        // equal to sizeof(Elf64_Ehdr) = 64
-	printf("\tElf64_Half \te_phnum: \t%u\n", ep->e_phnum);				// Number of program header entries
-    printf("\tElf64_Half \te_shentsize: \t%u\n", ep->e_shentsize);		// Size of section header entry
-    printf("\tElf64_Half \te_shnum: \t%u\n", ep->e_shnum);				// Number of section header entries
-    printf("\tElf64_Half \te_shstrndx: \t%u\n", ep->e_shentsize);		// Section name string table index
-	printf("}\n");
+	fprintf(stderr, "ELF header {\n");
+	fprintf(stderr, "\tunsigned char \te_ident[16] \t= \"%s\"\n", e->e_ident);	// ELF identification
+    fprintf(stderr, "\tElf64_Half \te_type \t\t= %#x\n", e->e_type);			// Object file type
+    fprintf(stderr, "\tElf64_Half \te_machine \t= %#x\n", e->e_machine);		// Machine type
+    fprintf(stderr, "\tElf64_Word \te_version \t= %u\n", e->e_version);			// Object file version
+    fprintf(stderr, "\tElf64_Addr \te_entry \t= %#lx\n", e->e_entry);			// Entry point address
+	fprintf(stderr, "\tElf64_Off \te_phoff \t= %#lx\n", e->e_phoff);			// Program header offset
+	fprintf(stderr, "\tElf64_Off \te_shoff \t= %#lx\n", e->e_shoff);			// Section header offset
+    fprintf(stderr, "\tElf64_Word \te_flags \t= %#x\n", e->e_flags);			// Processor-specific flags
+    fprintf(stderr, "\tElf64_Half \te_ehsize \t= %u\n", e->e_ehsize);			// ELF header size (equal to sizeof(Elf64_Ehdr))
+    fprintf(stderr, "\tElf64_Half \te_phentsize \t= %u\n", e->e_phentsize);		// Size of program header entry
+	fprintf(stderr, "\tElf64_Half \te_phnum \t= %u\n", e->e_phnum);				// Number of program header entries
+    fprintf(stderr, "\tElf64_Half \te_shentsize \t= %u\n", e->e_shentsize);		// Size of section header entry
+    fprintf(stderr, "\tElf64_Half \te_shnum \t= %u\n", e->e_shnum);				// Number of section header entries
+    fprintf(stderr, "\tElf64_Half \te_shstrndx \t= %u\n", e->e_shentsize);		// Section name string table index
+	fprintf(stderr, "}\n");
 }
-void print_program_header_entry(int i, Elf64_Phdr *pp)
+void print_p_header(int idx, const Elf64_Phdr *p)
 {
-	printf("Program header entry [%d] {\n", i);
-    printf("\tElf64_Word \tp_type: \t%#x\n", pp->p_type);				// Type of segment
-    printf("\tElf64_Word \tp_flags: \t%#x\n", pp->p_flags);				// Segment attributes
-    printf("\tElf64_Off \tp_offset: \t%#lx\n", pp->p_offset);			// Offset in file
-    printf("\tElf64_Addr \tp_vaddr: \t%#lx\n", pp->p_vaddr);			// Virtual address in memory
-    	//printf("\tElf64_Addr \tp_paddr: \t%#lx\n", pp->p_paddr);			// Reserved
-    printf("\tElf64_Xword \tp_filesz: \t%#lx\n", pp->p_filesz);			// Size of segment in file
-    printf("\tElf64_Xword \tp_memsz: \t%#lx\n", pp->p_memsz);			// Size of segment in memory
-    printf("\tElf64_Xword \tp_align: \t%#lx\n", pp->p_align);			// Alignment of segment
-	printf("}\n");
+	fprintf(stderr, "Program header entry [%d] {\n", idx);
+    fprintf(stderr, "\tElf64_Word \tp_type \t\t= %#x\n", p->p_type);			// Type of segment
+    fprintf(stderr, "\tElf64_Word \tp_flags \t= %#x\n", p->p_flags);			// Segment attributes
+    fprintf(stderr, "\tElf64_Off \tp_offset \t= %#lx\n", p->p_offset);			// Offset in file
+    fprintf(stderr, "\tElf64_Addr \tp_vaddr \t= %#lx\n", p->p_vaddr);			// Virtual address in memory
+    //fprintf(stderr, "\tElf64_Addr \tp_paddr \t= %#lx\n", p->p_paddr);			// Reserved
+    fprintf(stderr, "\tElf64_Xword \tp_filesz \t= %#lx\n", p->p_filesz);		// Size of segment in file
+    fprintf(stderr, "\tElf64_Xword \tp_memsz \t= %#lx\n", p->p_memsz);			// Size of segment in memory
+    fprintf(stderr, "\tElf64_Xword \tp_align \t= %#lx\n", p->p_align);			// Alignment of segment
+	fprintf(stderr, "}\n");
 }
-void print_stack(Elf64_Addr sp)
+void print_stack(const char **argv)
 {
-	int i;
-
-	char **argv, **envp;
+	char **envp;
 	Elf64_auxv_t *auxv;
 	int argc, envc, auxc;
 
-	printf("argc = %ld\n", *(int64_t *)sp);					// argc
-	sp += sizeof(int64_t);
-
-	argv = (char **)sp;										// argv
-	for (i = 0; argv[i]; i++) {
-		printf("(%p) argv[%d] -> (%p) \"%s\"\n", &argv[i], i, argv[i], argv[i]);
-		if (!argv[i])
+	for (int i = 0; ; i++) {
+		fprintf(stderr, "argv[%d] <%p> -> \"%s\" <%p>\n", i, &argv[i], argv[i], argv[i]);
+		if (!argv[i]) {
+			argc = i;
 			break;
+		}
 	}
-	argc = i;
+	printf("argc = %d\n", argc);
 
-	envp = (char **)(argv + argc + 1);						// envp
-	for (i = 0; envp[i]; i++) {
-		printf("(%p) envp[%d] -> (%p) \"%s\"\n", &envp[i], i, envp[i], envp[i]);
-		if (!envp[i])
+	envp = (char **)(argv + argc + 1);							// envp
+	for (int i = 0; ; i++) {
+		fprintf(stderr, "envp[%d] <%p> -> \"%s\" <%p>\n", i, &envp[i], envp[i], envp[i]);
+		if (!envp[i]) {
+			envc = i;
 			break;
+		}
 	}
-	envc = i;
+	printf("envc = %d\n", envc);
 
-	auxv = (Elf64_auxv_t *)(envp + envc + 1);				// auxc
-	for (i = 0; auxv[i].a_type != AT_NULL; i++)
-		;
-	auxc = i;
+	auxv = (Elf64_auxv_t *)(envp + envc + 1);					// auxc
+	for (int i = 0; ; i++) {
+		fprintf(stderr, "auxv[%d] <%p> = ", i, &auxv[i]);
+		switch (auxv[i].a_type) {
+			case AT_NULL:			// 0: End of vector
+				fprintf(stderr, "AT_NULL, (ignored)\n");
+				break;
+			case AT_IGNORE:			// 1: Entry should be ignored
+				fprintf(stderr, "AT_IGNORE, (ignored)\n");
+				break;
+			case AT_EXECFD:			// 2: File descriptor of program
+				fprintf(stderr, "AT_EXECFD, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_PHDR:			// 3: Program headers for program
+				fprintf(stderr, "AT_PHDR, %#lx\n", auxv[i].a_un.a_val);		// .a_ptr
+				break;
+			case AT_PHENT:			// 4: Size of program header entry
+				fprintf(stderr, "AT_PHENT, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_PHNUM:			// 5: Number of program headers
+				fprintf(stderr, "AT_PHNUM, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_PAGESZ:			// 6: System page size
+				fprintf(stderr, "AT_PAGESZ, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_BASE:			// 7: Base address of interpreter
+				fprintf(stderr, "AT_BASE, %#lx\n", auxv[i].a_un.a_val);		// .a_ptr
+				break;
+			case AT_FLAGS:			// 8: Flags
+				fprintf(stderr, "AT_FLAGS, %#lx\n", auxv[i].a_un.a_val);
+				break;
+			case AT_ENTRY:			// 9: Entry point of program
+				fprintf(stderr, "AT_ENTRY, %#lx\n", auxv[i].a_un.a_val);	// .a_ptr
+				break;
+			case AT_NOTELF:			// 10: Program is not ELF
+				fprintf(stderr, "AT_NOTELF, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_UID:			// 11: Real uid
+				fprintf(stderr, "AT_UID, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_EUID:			// 12: Effective uid
+				fprintf(stderr, "AT_EUID, %ld\n", auxv[i].a_un.a_val);
+				break;	
+			case AT_GID:			// 13: Real gid
+				fprintf(stderr, "AT_GID, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_EGID:			// 14: Effective gid
+				fprintf(stderr, "AT_EGID, %ld\n", auxv[i].a_un.a_val);
+				break;
+			case AT_CLKTCK:			// 17: Frequency of times()
+				fprintf(stderr, "AT_CLKTCK, %ld\n", auxv[i].a_un.a_val);
+				break;
+			// Pointer to the global system page used for system calls and other nice things.
+			case AT_SYSINFO:		// 22
+				fprintf(stderr, "AT_SYSINFO, %#lx\n", auxv[i].a_un.a_val);
+				break;
+			case AT_SYSINFO_EHDR:	// 33
+				fprintf(stderr, "AT_SYSINFO_EHDR, %#lx\n", auxv[i].a_un.a_val);
+				break;
+			default:				// ???
+				fprintf(stderr, "AT_??? (%ld), %ld\n", auxv[i].a_type, auxv[i].a_un.a_val);
+				break;
+		}
+		if (auxv[i].a_type == AT_NULL) {
+			auxc = i;
+			break;
+		}
+	}
 	printf("auxc = %d\n", auxc);
 }
 
 
-int elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
+int fd;
+Elf64_Ehdr e_header;
+Elf64_Phdr *p_headers;
+
+
+void *elf_map(Elf64_Addr addr, size_t len, int prot, int flags, int fd, off_t offset)
 {
-    // align to page
 	// Loadable process segments must have congruent values for p_vaddr and p_offset, modulo the page size.
 	addr = PAGE_FLOOR(addr), offset = PAGE_FLOOR(offset), len = PAGE_CEIL(PAGE_OFFSET(addr) + len);
 	
-	if (mmap((void *)addr, len, prot, flags, fd, offset) == MAP_FAILED) {
-		fprintf(stderr, "Error: Mapping failed: offset [%#lx, %#lx) -> [%#lx, %#lx): %s\n", offset, offset + len, addr, addr + len, strerror(errno));
-		exit(1);
-	}
-	fprintf(stderr, "Mapping: offset [%#lx, %#lx) -> [%#lx, %#lx) (size: %ld)\n", offset, offset + len, addr, addr + len, len);
-    return 0;
+	fprintf(stderr, "Mapping: offset [%#lx, %#lx) -> [%#lx, %#lx) (size = %#lx)\n", offset, offset + len, addr, addr + len, len);
+	return mmap((void *)addr, len, prot, flags, fd, offset);
 }
 // read-write zero-initialized anonymous memory
-int elf_map_bss(Elf64_Addr start, Elf64_Addr end, int prot, int flags)
+void *elf_map_bss(Elf64_Addr addr, size_t len, int prot, int flags)
 {
-	Elf64_Addr prev_start = start;
-	
-    // align to page
-	start = PAGE_CEIL(start), end = PAGE_CEIL(end);
-	if (start == end)
-		return 0;
-	
-	// zero-fill
-	if (prev_start < start)
-		memset((void *)prev_start, 0, start - prev_start);
+	Elf64_Addr _addr = addr;
+	addr = PAGE_CEIL(_addr), len = PAGE_CEIL(_addr + len) - PAGE_CEIL(_addr);
 
-	// MAP_ANONYMOUS: The mapping is not backed by any file; its contents are initialized to zero.
-	if (mmap((void *)start, end - start, prot, flags | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
-		fprintf(stderr, "Error: Mapping failed: .bss -> [%#lx, %#lx): %s\n", start, end, strerror(errno));
-		exit(1);
-	}
-	fprintf(stderr, "Mapping: .bss -> [%#lx, %#lx) (size: %ld)\n", start, end, end - start);
-    return 0;
+	if (_addr < addr)
+		memset((void *)_addr, 0, addr - _addr);		// zero-fill
+	if (!len)
+		return NULL;
+	
+	fprintf(stderr, "Mapping: .bss -> [%#lx, %#lx) (size = %#lx)\n", addr, addr + len, len);
+	return mmap((void *)addr, len, prot, flags | MAP_ANONYMOUS, -1, 0);
 }
-int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load_addr)
+
+int load_elf_binary(const char *path, Elf64_Addr *load_addr)
 {
 	/* open the program */
 
-	int fd;
 	if ((fd = open(path, O_RDONLY)) == -1) {
-        fprintf(stderr, "Error: Cannot open the program ’%s’: %s\n", path, strerror(errno));
+        fprintf(stderr, "Error: Cannot open the program '%s': %s\n", path, strerror(errno));
 		exit(1);
     }
 
 
 	/* read ELF header */
 	
-	if (read(fd, elf_header_p, sizeof(Elf64_Ehdr)) == -1) {
+	if (read(fd, &e_header, sizeof(Elf64_Ehdr)) == -1) {
 		perror("Error: Cannot read ELF header");
 		exit(1);
 	}
-    //print_elf_header(elf_header_p);		// debug
+    //print_e_header(&e_header);
 
-	if (strncmp((const char *)elf_header_p->e_ident, "\x7f""ELF", 4)) {		// magic number
+	if (strncmp((const char *)e_header.e_ident, "\x7f""ELF", 4)) {		// magic number
 		fprintf(stderr, "Error: Not ELF object file\n");
 		exit(1);
 	}
-	if (elf_header_p->e_ident[EI_CLASS] != ELFCLASS64) {
+	if (e_header.e_ident[EI_CLASS] != ELFCLASS64) {
 		fprintf(stderr, "Error: Not 64-bit object\n");
 		exit(1);
 	}
-    if (elf_header_p->e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
+    if (e_header.e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
 		fprintf(stderr, "Error: This loader only support static linked executables (ET_EXEC)\n");
 		exit(1);
 	}
@@ -161,45 +215,47 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 
 	/* read program header table */
 
-	Elf64_Phdr program_header_entry;
-	int elf_prot;
-	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
-	Elf64_Addr bss_start, bss_end;
-	
-	int load_addr_set = 0;
-	*load_addr = 0;
-
-	if (lseek(fd, elf_header_p->e_phoff, SEEK_SET) == -1) {
+	if ((p_headers = malloc(e_header.e_phnum * sizeof(Elf64_Phdr))) == NULL) {
+		perror("Error: Cannot allocate memory for a program header table");
+		exit(1);
+	}
+	if (lseek(fd, e_header.e_phoff, SEEK_SET) == -1) {
 		perror("Error: lseek()");
 		exit(1);
 	}
-	for (int i = 0; i < elf_header_p->e_phnum; i++) {
-		if (read(fd, &program_header_entry, sizeof(Elf64_Phdr)) == -1) {
-			perror("Error: Cannot read a program header entry");
-			exit(1);
-		}
+	if (read(fd, p_headers, e_header.e_phnum * sizeof(Elf64_Phdr)) == -1) {
+		perror("Error: Cannot read a program header table");
+		exit(1);
+	}
 
-		if (program_header_entry.p_type != PT_LOAD)
+	int elf_prot;
+	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
+
+	*load_addr = (Elf64_Addr)-1;
+	for (int i = 0; i < e_header.e_phnum; i++) {
+		//print_p_header(i, &p_headers[i]);
+
+		if (p_headers[i].p_type != PT_LOAD)
             continue;
-		//puts(""), print_program_header_entry(i, &program_header_entry);	// debug
+		*load_addr = MIN2(*load_addr, p_headers[i].p_vaddr - p_headers[i].p_offset);
 		
 		elf_prot = 0;
-		if (program_header_entry.p_flags & PF_R)	elf_prot |= PROT_READ;
-		if (program_header_entry.p_flags & PF_W)	elf_prot |= PROT_WRITE;
-		if (program_header_entry.p_flags & PF_X)	elf_prot |= PROT_EXEC;
+		if (p_headers[i].p_flags & PF_R)	elf_prot |= PROT_READ;
+		if (p_headers[i].p_flags & PF_W)	elf_prot |= PROT_WRITE;
+		if (p_headers[i].p_flags & PF_X)	elf_prot |= PROT_EXEC;
 
-		elf_map(program_header_entry.p_vaddr, program_header_entry.p_filesz, elf_prot, elf_flags, fd, program_header_entry.p_offset);
-		
-		if (!load_addr_set) {
-			load_addr_set = 1;
-			*load_addr = program_header_entry.p_vaddr - program_header_entry.p_offset;
+		if (elf_map(p_headers[i].p_vaddr, p_headers[i].p_filesz, elf_prot, elf_flags, fd, p_headers[i].p_offset) == MAP_FAILED) {
+			perror("Error: Memory mapping failed");
+			exit(1);
 		}
-
+		
 		// .bss
-        bss_start = program_header_entry.p_vaddr + program_header_entry.p_filesz;
-        bss_end = program_header_entry.p_vaddr + program_header_entry.p_memsz;
-        if (bss_start < bss_end)	// !(bss_start == bss_end)
-			elf_map_bss(bss_start, bss_end, elf_prot, elf_flags);
+        if (p_headers[i].p_filesz < p_headers[i].p_memsz) {
+			if (elf_map_bss(p_headers[i].p_vaddr + p_headers[i].p_filesz, p_headers[i].p_memsz - p_headers[i].p_filesz, elf_prot, elf_flags) == MAP_FAILED) {
+				perror("Error: Memory mapping failed");
+				exit(1);
+			}
+		}
 	}
 
 	close(fd);
@@ -207,7 +263,7 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 }
 
 
-Elf64_Addr create_elf_tables(char *argv[], char *envp[], Elf64_Ehdr *elf_header_p, Elf64_Addr load_addr)
+Elf64_Addr create_elf_tables(const char *argv[], const char *envp[], Elf64_Addr load_addr)
 {
 	int i;
 
@@ -238,12 +294,11 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], Elf64_Ehdr *elf_header_
 
 	Elf64_Addr sp;
 
+	fprintf(stderr, "Mapping: stack -> [%#lx, %#lx) (size = %#lx)\n", STACK_LOW, STACK_LOW + STACK_SIZE, (size_t)STACK_SIZE);
 	if (mmap((void *)STACK_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
-		fprintf(stderr, "Error: Mapping failed: stack -> [%#lx, %#lx): %s\n", STACK_LOW, STACK_LOW + STACK_SIZE, strerror(errno));
+		perror("Error: Memory mapping failed");
 		exit(1);
 	}
-	fprintf(stderr, "Mapping: stack -> [%#lx, %#lx) (size: %ld)\n", STACK_LOW, STACK_LOW + STACK_SIZE, (size_t)STACK_SIZE);
-
 
 	/* init stack pointer and resolve new addresses by information */
 	
@@ -251,7 +306,7 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], Elf64_Ehdr *elf_header_
 	Elf64_auxv_t *new_auxv;
 	char *new_argv_asciiz_space, *new_envp_asciiz_space;
 
-	sp = STACK_LOW + STACK_SIZE;  							// bottom of stack
+	sp = STACK_HIGH;										// bottom of stack
 
 	sp -= sizeof(int64_t);									// end marker
 
@@ -282,18 +337,26 @@ Elf64_Addr create_elf_tables(char *argv[], char *envp[], Elf64_Ehdr *elf_header_
 
 	for (i = 0; i < auxc; i++) {							// auxv
 		new_auxv[i] = auxv[i];
-		switch (new_auxv[i].a_type) {
-			case AT_PHDR:	// Program headers for program
-				//printf("AT_PHDR: %#lx -> %#lx\n", new_auxv[i].a_un.a_val, load_addr + elf_header_p->e_phoff);
-				new_auxv[i].a_un.a_val = load_addr + elf_header_p->e_phoff;
+		switch (auxv[i].a_type) {
+			case AT_EXECFD:			// 2: File descriptor of program
+				auxv[i].a_type = AT_IGNORE;
+				//fprintf(stderr, "Auxiliary vector modified: AT_EXECFD: %ld -> ignored\n", auxv[i].a_un.a_val);
 				break;
-			case AT_PHNUM:	// Number of program headers
-				//printf("AT_PHNUM: %lu -> %u\n", new_auxv[i].a_un.a_val, elf_header_p->e_phnum);
-				new_auxv[i].a_un.a_val = elf_header_p->e_phnum;
+			case AT_PHDR:			// 3: Program headers for program
+				new_auxv[i].a_un.a_val = load_addr + e_header.e_phoff;
+				//fprintf(stderr, "Auxiliary vector modified: AT_PHDR: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
-			case AT_ENTRY:	// Entry point of program
-				//printf("AT_ENTRY: %#lx -> %#lx\n", new_auxv[i].a_un.a_val, elf_header_p->e_entry);
-				new_auxv[i].a_un.a_val = elf_header_p->e_entry;
+			case AT_PHNUM:			// 5: Number of program headers
+				new_auxv[i].a_un.a_val = e_header.e_phnum;
+				//fprintf(stderr, "Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				break;
+			case AT_BASE:			// 7: Base address of interpreter
+				new_auxv[i].a_un.a_val = 0;
+				//fprintf(stderr, "Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				break;
+			case AT_ENTRY:			// 9: Entry point of program
+				new_auxv[i].a_un.a_val = e_header.e_entry;
+				//fprintf(stderr, "Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 		}
 	}
@@ -346,38 +409,33 @@ void start_thread(Elf64_Addr entry, Elf64_Addr sp)
 }
 
 
-int my_execve(const char *path, char *argv[], char *envp[])
+int my_execve(const char *path, const char *argv[], const char *envp[])
 {
-	Elf64_Ehdr elf_header;
 	Elf64_Addr sp;
 
 	Elf64_Addr load_addr;
-	load_elf_binary(path, &elf_header, &load_addr);
-	sp = create_elf_tables(argv, envp, &elf_header, load_addr);
-	//print_stack(sp);	// debug
+	load_elf_binary(path, &load_addr);
+	sp = create_elf_tables(argv, envp, load_addr);
+	//print_stack((const char **)(sp + sizeof(int64_t)));
 
-	puts("");
-	printf("Executing the program ’%s’... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, elf_header.e_entry);
-	printf("--------\n");
+	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);
+	fprintf(stderr, "--------\n");
 	
-	start_thread(elf_header.e_entry, sp);	// context switch
+	start_thread(e_header.e_entry, sp);	// context switch
 
 	return -1;
 }
 #define execve my_execve
 
 
-int main(int argc, char *argv[], char *envp[])
+int main(int argc, const char **argv, const char **envp)
 {
-	char **new_argv;
-
 	if (argc < 2) {
         fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
         exit(1);
     }
-	new_argv = &argv[1];
 
-	execve(new_argv[0], new_argv, envp);
+	execve(argv[1], argv + 1, envp);
 
 	printf("This is never printed\n");
 	return 0;
