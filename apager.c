@@ -12,18 +12,15 @@
 extern int errno;
 
 
-// Adapted from linux/fs/binfmt_elf.c
-#define PAGE_SIZE		(1 << 12)	// 4096 B
+// adapted from linux/fs/binfmt_elf.c
+#define PAGE_SIZE			(1 << 12)	// 4096 B
+#define PAGE_FLOOR(_addr)	((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
+#define PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
+#define PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
-#define PAGE_FLOOR(_v)	((_v) & ~(unsigned long)(PAGE_SIZE - 1))		// ELF_PAGESTART
-#define PAGE_OFFSET(_v)	((_v) & (PAGE_SIZE - 1))						// ELF_PAGEOFFSET
-#define PAGE_CEIL(_v)	(((_v) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
-
-#define STACK_SIZE		(1 << 26)	// 8192 KB
-#define STACK_LOW		0x10000000L
-#define STACK_HIGH		(STACK_LOW + STACK_SIZE)
-
-
+#define STACK_SIZE			(1 << 26)	// 8192 KB
+#define STACK_LOW			0x10000000L
+#define STACK_HIGH			(STACK_LOW + STACK_SIZE)
 
 
 void print_elf_header(Elf64_Ehdr *ep)
@@ -157,7 +154,7 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 		exit(1);
 	}
     if (elf_header_p->e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
-		fprintf(stderr, "Error: This loader only support static linked executables (ET_EXEC)");
+		fprintf(stderr, "Error: This loader only support static linked executables (ET_EXEC)\n");
 		exit(1);
 	}
 	
@@ -165,11 +162,10 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 	/* read program header table */
 
 	Elf64_Phdr program_header_entry;
-	Elf64_Addr bss_start, bss_end;
-
 	int elf_prot;
 	int elf_flags = MAP_PRIVATE | MAP_FIXED;	// valid in ET_EXEC
-
+	Elf64_Addr bss_start, bss_end;
+	
 	int load_addr_set = 0;
 	*load_addr = 0;
 
@@ -177,10 +173,9 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 		perror("Error: lseek()");
 		exit(1);
 	}
-
 	for (int i = 0; i < elf_header_p->e_phnum; i++) {
 		if (read(fd, &program_header_entry, sizeof(Elf64_Phdr)) == -1) {
-			perror("Error: Cannot read program header entry");
+			perror("Error: Cannot read a program header entry");
 			exit(1);
 		}
 
@@ -207,9 +202,7 @@ int load_elf_binary(const char *path, Elf64_Ehdr *elf_header_p, Elf64_Addr *load
 			elf_map_bss(bss_start, bss_end, elf_prot, elf_flags);
 	}
 
-
 	close(fd);
-	
 	return 0;
 }
 
@@ -364,11 +357,10 @@ int my_execve(const char *path, char *argv[], char *envp[])
 	//print_stack(sp);	// debug
 
 	puts("");
-	printf("Executing ’%s’... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, elf_header.e_entry);
+	printf("Executing the program ’%s’... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, elf_header.e_entry);
 	printf("--------\n");
-
-	// context switch
-	start_thread(elf_header.e_entry, sp);
+	
+	start_thread(elf_header.e_entry, sp);	// context switch
 
 	return -1;
 }
