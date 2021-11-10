@@ -4,9 +4,6 @@ extern int errno;
 
 
 
-// set only by load_elf_binary()
-Elf64_Ehdr e_header;
-
 void map_segment(const Elf64_Phdr *pp, int fd) {
 	Elf64_Addr segment_start, bss_start, bss_end;
 	segment_start = pp->p_vaddr;
