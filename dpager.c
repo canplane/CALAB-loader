@@ -1,3 +1,8 @@
+#ifndef		__DPAGER_C__
+#define		__DPAGER_C__
+
+
+
 #include 	"./common.c"
 #include 	<signal.h>
 
@@ -169,6 +174,10 @@ int my_execve(const char *path, const char *argv[], const char *envp[])
 	return -1;
 }
 #define 	execve 				my_execve
+
+
+
+#endif
 
 
 

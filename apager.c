@@ -1,3 +1,8 @@
+#ifndef		__APAGER_C__
+#define		__APAGER_C__
+
+
+
 #include 	"./common.c"
 
 
@@ -122,6 +127,10 @@ int my_execve(const char *path, const char *argv[], const char *envp[])
 	return -1;
 }
 #define 	execve 				my_execve
+
+
+
+#endif
 
 
 
