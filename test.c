@@ -8,7 +8,13 @@ char *s = "foo";    // .rodata
 int main()
 {
     printf("Hello World!\n");
-    malloc(10000);
-    printf("after malloc\n");
+    
+    char *p = malloc(0x100000);
+    printf("malloc 0x100000: %p\n", p);
+
+    char *q = NULL;
+    printf("assign value to nullptr\n");
+    *q = 'a';
+    
     return 0;
 }
