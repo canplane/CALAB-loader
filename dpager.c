@@ -5,10 +5,6 @@ extern int errno;
 
 
 
-#define 	P_HEADER_START		STACK_HIGH
-
-
-
 // set by load_elf_binary(), used by segv_handler()
 int fd;
 
