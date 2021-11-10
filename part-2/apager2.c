@@ -1,5 +1,5 @@
-#ifndef		__APAGER_C__
-#define		__APAGER_C__
+#ifndef		__APAGER2_C__
+#define		__APAGER2_C__
 
 
 
