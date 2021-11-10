@@ -1,8 +1,6 @@
 #include 	"./common.c"
 #include 	<signal.h>
 
-extern int errno;
-
 
 
 // set by load_elf_binary(), used by segv_handler()

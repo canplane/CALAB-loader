@@ -1,6 +1,4 @@
-#include "common.c"
-
-extern int errno;
+#include 	"./common.c"
 
 
 

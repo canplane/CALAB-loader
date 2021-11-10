@@ -14,6 +14,8 @@
 
 #include 	<errno.h>
 
+extern int errno;
+
 
 
 // adapted from linux/fs/binfmt_elf.c
