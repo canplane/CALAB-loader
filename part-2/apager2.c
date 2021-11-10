@@ -1,9 +1,9 @@
-#ifndef		__APAGER2_C__
-#define		__APAGER2_C__
+#ifndef			__APAGER2_C__
+#define			__APAGER2_C__
 
 
 
-#include 	"./common.c"
+#include 		"./common.c"
 
 
 
@@ -109,24 +109,45 @@ Elf64_Ehdr load_elf_binary(const char *path)
 }
 
 
+void init_jmpbuf(Elf64_Addr page_start, const char *argv[])
+{
+	int argc;
+	for (argc = 0; argv[argc]; argc++)
+		;
+	Elf64_Addr page_end = page_start + PAGE_CEIL((argc + 1) * sizeof(jmp_buf));
+	mmap((void *)page_start, page_end - page_start, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+
+	jmpbuf_p = (jmp_buf *)page_start;
+}
+
+
 
 int my_execve(const char *path, const char *argv[], const char *envp[])
 {
 	Elf64_Ehdr e_header;
 	Elf64_Addr sp;
-
+		
 	e_header = load_elf_binary(path);
+
+	init_jmpbuf(STACK_HIGH, argv);
 	sp = create_stack(argv, envp, &e_header);
 	//print_stack((const char **)(sp + sizeof(int64_t)));
 
 	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);
 	fprintf(stderr, "--------\n");
 	
-	start(e_header.e_entry, sp);	// context switch
+	if (!setjmp(jmpbuf_p[0])) {
+		start(e_header.e_entry, sp);	// context switch
+	}
 
-	return -1;
+	fprintf(stderr, "--------\n");
+	fprintf(stderr, "The program '%s' ended\n", path);
+
+	// unmap
+
+	return 0;
 }
-#define 	execve 				my_execve
+#define 		execve 				my_execve
 
 
 
@@ -144,7 +165,5 @@ int main(int argc, const char **argv, const char **envp)
 		fprintf(stderr, "Cannot execute the program '%s': %s\n", argv[1], strerror(errno));
 		exit(1);
 	}
-
-	printf("This is never printed.\n");
 	return 0;
 }

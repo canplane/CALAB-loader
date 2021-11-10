@@ -1,40 +1,47 @@
-#ifndef		__COMMON_C__
-#define		__COMMON_C__
+#ifndef			__COMMON_C__
+#define			__COMMON_C__
 
 
 
-#include 	<stdio.h>
-#include 	<stdlib.h>
-#include 	<string.h>
+#include 		<stdio.h>
+#include 		<stdlib.h>
+#include 		<string.h>
 
-#include 	<fcntl.h>
-#include 	<unistd.h>
-#include	<sys/mman.h>
-#include 	<elf.h>
+#include 		<fcntl.h>
+#include 		<unistd.h>
+#include		<sys/mman.h>
+#include 		<elf.h>
 
-#include 	<errno.h>
+#include 		<errno.h>
 
-extern int errno;
+extern int		errno;
+
+
+
+#include		<setjmp.h>
+
+jmp_buf			*jmpbuf_p;
 
 
 
 // adapted from linux/fs/binfmt_elf.c
-#define 	PAGE_SIZE			(size_t)(1 << 12)	// 4096 B
-#define 	PAGE_FLOOR(_addr)	((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
-#define 	PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
-#define 	PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
+#define 		PAGE_SIZE			(size_t)(1 << 12)	// 4096 B
+#define 		PAGE_FLOOR(_addr)	((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
+#define 		PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
+#define 		PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
-#define 	STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
-#define 	STACK_HIGH			0x20000000L
-#define 	STACK_LOW			(STACK_HIGH - STACK_SIZE)
+#define 		STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
+#define 		STACK_HIGH			0x20000000L
+#define 		STACK_LOW			(STACK_HIGH - STACK_SIZE)
 
-#define		BASE_ADDR			0x30000000L			// gcc -Ttext-segment=(BASE_ADDR) ...
+#define			BASE_ADDR			0x30000000L			// gcc -Ttext-segment=(BASE_ADDR) ...
 
 
 
 Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr *ep)
 {
 	int i;
+
 
 	/* allocate new stack space */
 
@@ -43,6 +50,9 @@ Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr
 		perror("Error: Cannot allocate memory for user stack");
 		exit(1);
 	}
+
+	char my_var[128];
+	sprintf(my_var, "MY_LOADER_JMPBUF=%p", (void *)jmpbuf_p);
 
 
 	/* get memory layout information */
@@ -80,6 +90,7 @@ Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr
 	sp -= sizeof(int64_t);									// end marker
 
 	sp -= envp_asciiz_space_size;							// environment ASCIIZ string space
+	sp -= strlen(my_var);									// 	+ my_var
 	new_envp_asciiz_space = (char *)sp;
 	
 	sp -= argv_asciiz_space_size;							// argument ASCIIZ string space
@@ -91,6 +102,7 @@ Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr
 	new_auxv = (Elf64_auxv_t *)sp;
 	
 	sp -= (envc + 1) * sizeof(char *);						// envp
+	sp -= sizeof(char *);									// 	+ my_var
 	new_envp = (char **)sp;
 	
 	sp -= (argc + 1) * sizeof(char *);						// argv
@@ -127,6 +139,8 @@ Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr
 		memcpy((void *)_sp, envp[i], len = strlen(envp[i]) + 1);
 		new_envp[i] = (void *)_sp, _sp += len;
 	}
+	memcpy((void *)_sp, my_var, len = strlen(my_var) + 1);	// 	+ my_var
+	new_envp[envc] = (void *)_sp, _sp += len;
 
 	_sp = (Elf64_Addr)new_argv_asciiz_space;				// argv, argument ASCIIZ strings
 	for (i = 0; i < argc; i++) {
