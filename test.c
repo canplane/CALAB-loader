@@ -13,7 +13,7 @@ int main()
     printf("malloc 0x100000: %p\n", p);
 
     char *q = NULL;
-    printf("assign value to nullptr\n");
+    printf("assign a value to nullptr?\n");
     *q = 'a';
     
     return 0;
