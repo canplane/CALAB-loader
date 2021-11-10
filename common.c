@@ -23,6 +23,153 @@
 
 
 
+extern Elf64_Ehdr e_header;
+
+Elf64_Addr create_stack(const char *argv[], const char *envp[])
+{
+	int i;
+
+	/* allocate new stack space */
+
+	fprintf(stderr, "Mapping: stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW, STACK_SIZE);
+	if (mmap((void *)STACK_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+		perror("Error: Memory mapping failed");
+		exit(1);
+	}
+
+
+	/* get memory layout information */
+
+	Elf64_auxv_t *auxv;
+	int argc, envc, auxc;
+	size_t argv_asciiz_space_size, envp_asciiz_space_size;
+
+	argv_asciiz_space_size = 0;								// argc, argument ASCIIZ strings
+	for (i = 0; argv[i]; i++)
+		argv_asciiz_space_size += strlen(argv[i]) + 1;
+	argc = i;
+
+	envp_asciiz_space_size = 0;								// envc, environment ASCIIZ strings
+	for (i = 0; envp[i]; i++)
+		envp_asciiz_space_size += strlen(envp[i]) + 1;
+	envc = i;
+
+	auxv = (Elf64_auxv_t *)(envp + envc + 1);				// auxc
+	for (i = 0; auxv[i].a_type != AT_NULL; i++)
+		;
+	auxc = i;
+
+
+	/* init stack pointer and resolve new addresses by information */
+
+	Elf64_Addr sp;
+	
+	char **new_argv, **new_envp;
+	Elf64_auxv_t *new_auxv;
+	char *new_argv_asciiz_space, *new_envp_asciiz_space;
+
+	sp = STACK_HIGH;										// bottom of stack
+
+	sp -= sizeof(int64_t);									// end marker
+
+	sp -= envp_asciiz_space_size;							// environment ASCIIZ string space
+	new_envp_asciiz_space = (char *)sp;
+	
+	sp -= argv_asciiz_space_size;							// argument ASCIIZ string space
+	new_argv_asciiz_space = (char *)sp;
+	
+	sp = sp & ~0xf;											// padding (0~16)
+	
+	sp -= (auxc + 1) * sizeof(Elf64_auxv_t);				// auxv
+	new_auxv = (Elf64_auxv_t *)sp;
+	
+	sp -= (envc + 1) * sizeof(char *);						// envp
+	new_envp = (char **)sp;
+	
+	sp -= (argc + 1) * sizeof(char *);						// argv
+	new_argv = (char **)sp;
+	
+	sp -= sizeof(int64_t);									// argc
+
+
+	/* store informations to new addresses */
+
+	Elf64_Addr _sp;
+	size_t len;
+
+	for (i = 0; i < auxc; i++) {							// auxv
+		new_auxv[i] = auxv[i];
+		switch (auxv[i].a_type) {
+			case AT_PHNUM:			// 5: Number of program headers
+				new_auxv[i].a_un.a_val = e_header.e_phnum;
+				//fprintf(stderr, "Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				break;
+			case AT_BASE:			// 7: Base address of interpreter
+				new_auxv[i].a_un.a_val = 0;
+				//fprintf(stderr, "Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				break;
+			case AT_ENTRY:			// 9: Entry point of program
+				new_auxv[i].a_un.a_val = e_header.e_entry;
+				//fprintf(stderr, "Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				break;
+		}
+	}
+
+	_sp = (Elf64_Addr)new_envp_asciiz_space;				// envp, environment ASCIIZ strings
+	for (i = 0; i < envc; i++) {
+		memcpy((void *)_sp, envp[i], len = strlen(envp[i]) + 1);
+		new_envp[i] = (void *)_sp, _sp += len;
+	}
+
+	_sp = (Elf64_Addr)new_argv_asciiz_space;				// argv, argument ASCIIZ strings
+	for (i = 0; i < argc; i++) {
+		memcpy((void *)_sp, argv[i], len = strlen(argv[i]) + 1);
+		new_argv[i] = (void *)_sp, _sp += len;
+	}
+
+	*(int64_t *)sp = (int64_t)argc;							// argc
+
+
+	/* return stack pointer */
+
+	return sp;
+}
+
+
+
+void start(Elf64_Addr entry, Elf64_Addr sp)
+{
+	__asm__ __volatile__ (
+		"movq $0, %%rdx\n\t"
+		"movq %0, %%rsp\n\t"
+		"jmp *%1"
+		: : "a" (sp), "b" (entry)
+	);
+
+    /*
+
+...8:	argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
+...0:	argc					[]			[]			[]
+											%rax		%rax
+														&(%rax)
+		// %r9 = %rdx
+					// %rsi = argc
+					// %rdx = (%rsp = &argv[0])
+														// %r8  = _libc_csu_fini
+														// %rcx = _libc_csu_init
+														// %rdi = main
+
+		_libc_start_main(
+			%rdi=main, %rsi=argc, %rdx=argv, %rcx=_libc_csu_init, %r8=_libc_csu_fini, %r9
+		)
+    
+	 */
+}
+
+
+
+/* for debugging */
+
 void print_e_header(const Elf64_Ehdr *ep)
 {
 	fprintf(stderr, "{\n");
@@ -151,146 +298,4 @@ void print_stack(const char **argv)
 		}
 	}
 	printf("auxc = %d\n", auxc);
-}
-
-
-
-extern Elf64_Ehdr e_header;
-
-Elf64_Addr create_stack(const char *argv[], const char *envp[])
-{
-	int i;
-
-	/* allocate new stack space */
-
-	fprintf(stderr, "Mapping: stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW, STACK_SIZE);
-	if (mmap((void *)STACK_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
-		perror("Error: Memory mapping failed");
-		exit(1);
-	}
-
-
-	/* get memory layout information */
-
-	Elf64_auxv_t *auxv;
-	int argc, envc, auxc;
-	size_t argv_asciiz_space_size, envp_asciiz_space_size;
-
-	argv_asciiz_space_size = 0;								// argc, argument ASCIIZ strings
-	for (i = 0; argv[i]; i++)
-		argv_asciiz_space_size += strlen(argv[i]) + 1;
-	argc = i;
-
-	envp_asciiz_space_size = 0;								// envc, environment ASCIIZ strings
-	for (i = 0; envp[i]; i++)
-		envp_asciiz_space_size += strlen(envp[i]) + 1;
-	envc = i;
-
-	auxv = (Elf64_auxv_t *)(envp + envc + 1);				// auxc
-	for (i = 0; auxv[i].a_type != AT_NULL; i++)
-		;
-	auxc = i;
-
-
-	/* init stack pointer and resolve new addresses by information */
-
-	Elf64_Addr sp;
-	
-	char **new_argv, **new_envp;
-	Elf64_auxv_t *new_auxv;
-	char *new_argv_asciiz_space, *new_envp_asciiz_space;
-
-	sp = STACK_HIGH;										// bottom of stack
-
-	sp -= sizeof(int64_t);									// end marker
-
-	sp -= envp_asciiz_space_size;							// environment ASCIIZ string space
-	new_envp_asciiz_space = (char *)sp;
-	
-	sp -= argv_asciiz_space_size;							// argument ASCIIZ string space
-	new_argv_asciiz_space = (char *)sp;
-	
-	sp = sp & ~0xf;											// padding (0~16)
-	
-	sp -= (auxc + 1) * sizeof(Elf64_auxv_t);				// auxv
-	new_auxv = (Elf64_auxv_t *)sp;
-	
-	sp -= (envc + 1) * sizeof(char *);						// envp
-	new_envp = (char **)sp;
-	
-	sp -= (argc + 1) * sizeof(char *);						// argv
-	new_argv = (char **)sp;
-	
-	sp -= sizeof(int64_t);									// argc
-
-
-	/* store informations to new addresses */
-
-	Elf64_Addr _sp;
-	size_t len;
-
-	for (i = 0; i < auxc; i++) {							// auxv
-		new_auxv[i] = auxv[i];
-		switch (auxv[i].a_type) {
-			case AT_PHNUM:			// 5: Number of program headers
-				new_auxv[i].a_un.a_val = e_header.e_phnum;
-				//fprintf(stderr, "Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
-				break;
-			case AT_BASE:			// 7: Base address of interpreter
-				new_auxv[i].a_un.a_val = 0;
-				//fprintf(stderr, "Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
-				break;
-			case AT_ENTRY:			// 9: Entry point of program
-				new_auxv[i].a_un.a_val = e_header.e_entry;
-				//fprintf(stderr, "Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
-				break;
-		}
-	}
-
-	_sp = (Elf64_Addr)new_envp_asciiz_space;				// envp, environment ASCIIZ strings
-	for (i = 0; i < envc; i++) {
-		memcpy((void *)_sp, envp[i], len = strlen(envp[i]) + 1);
-		new_envp[i] = (void *)_sp, _sp += len;
-	}
-
-	_sp = (Elf64_Addr)new_argv_asciiz_space;				// argv, argument ASCIIZ strings
-	for (i = 0; i < argc; i++) {
-		memcpy((void *)_sp, argv[i], len = strlen(argv[i]) + 1);
-		new_argv[i] = (void *)_sp, _sp += len;
-	}
-
-	*(int64_t *)sp = (int64_t)argc;							// argc
-
-
-	/* return stack pointer */
-
-	return sp;
-}
-
-
-
-void start(Elf64_Addr entry, Elf64_Addr sp)
-{
-		/*
-...8:	argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
-...0:	argc					[]			[]			[]
-											%rax		%rax
-														&(%rax)
-		// %r9 = %rdx
-					// %rsi = argc
-					// %rdx = (%rsp = &argv[0])
-														// %r8  = _libc_csu_fini
-														// %rcx = _libc_csu_init
-														// %rdi = main
-
-		_libc_start_main(
-			%rdi=main, %rsi=argc, %rdx=argv, %rcx=_libc_csu_init, %r8=_libc_csu_fini, %r9
-		)
-	 */
-	__asm__ __volatile__ (
-		"movq $0, %%rdx\n\t"
-		"movq %0, %%rsp\n\t"
-		"jmp *%1"
-		: : "a" (sp), "b" (entry)
-	);
 }
