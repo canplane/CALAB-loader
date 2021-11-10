@@ -78,7 +78,7 @@ Elf64_Ehdr read_elf_binary(const char *path)
 
 
 
-void map_one_page(Elf64_Addr addr, const Elf64_Phdr *pp) {
+void map_one_page(Elf64_Addr addr, const Elf64_Phdr *pp, int elf_fd) {
 	Elf64_Addr segment_start, bss_start, bss_end;
 	segment_start = pp->p_vaddr;
 	bss_start = segment_start + pp->p_filesz, bss_end = segment_start + pp->p_memsz;
@@ -102,12 +102,12 @@ void map_one_page(Elf64_Addr addr, const Elf64_Phdr *pp) {
 	}
 	else if (page_end <= bss_start) {
 		fprintf(stderr, "Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n", offset, page_start, PAGE_SIZE);
-		if (mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, fd, offset) == MAP_FAILED)
+		if (mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, elf_fd, offset) == MAP_FAILED)
 			goto mmap_err;
 	}
 	else {	// page_start < bss_start < page_end
 		fprintf(stderr, "Mapping: (file offset = %#lx) and .bss -> (memory address = %#lx, size = %#lx)\n", offset, page_start, PAGE_SIZE);
-		if (mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, fd, offset) == MAP_FAILED)
+		if (mmap((void *)page_start, PAGE_SIZE, elf_prot, elf_flags, elf_fd, offset) == MAP_FAILED)
 			goto mmap_err;
 		
 		// zero-fill
@@ -131,7 +131,7 @@ void segv_handler(int signo, siginfo_t *si, void *arg)
             continue;
 		if (!((p_header_table[i].p_vaddr <= addr) && (addr < p_header_table[i].p_vaddr + p_header_table[i].p_memsz)))
 			continue;
-		map_one_page(addr, &p_header_table[i]);
+		map_one_page(addr, &p_header_table[i], fd);
 		return;
 	}
 
