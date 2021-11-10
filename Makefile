@@ -10,6 +10,6 @@ test: test.c
 	gcc -static test.c -o test
 
 clean:
-	rm apager
-	rm dpager
-	rm test
+	rm -f apager
+	rm -f dpager
+	rm -f test

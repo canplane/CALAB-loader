@@ -73,7 +73,7 @@ void load_elf_binary(const char *path)
 		exit(1);
 	}
     if (e_header.e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
-		fprintf(stderr, "Error: This loader only support static linked executables (ET_EXEC)\n");
+		fprintf(stderr, "Error: This loader only support static linked executables. (ET_EXEC)\n");
 		exit(1);
 	}
 	
@@ -93,10 +93,16 @@ void load_elf_binary(const char *path)
 	}
 
 	/* map into memory */
+	Elf64_Addr addr_ = -1UL;
 	for (int i = 0; i < e_header.e_phnum; i++) {
 		//fprintf(stderr, "Program header entry %d ", i), print_p_header(&p_headers[i]);
 		if (p_headers[i].p_type != PT_LOAD)
             continue;
+		
+		if (p_headers[i].p_vaddr + p_headers[i].p_memsz > STACK_LOW) {
+			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx.\n", (size_t)0, STACK_LOW);
+			exit(1);
+		}
 		map_segment(&p_headers[i], fd);
 	}
 
@@ -121,7 +127,7 @@ int my_execve(const char *path, const char *argv[], const char *envp[])
 
 	return -1;
 }
-#define execve 				my_execve
+#define 	execve 				my_execve
 
 
 
@@ -131,8 +137,11 @@ int main(int argc, const char **argv, const char **envp)
         fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
         exit(1);
     }
-	execve(argv[1], argv + 1, envp);
+	if (execve(argv[1], argv + 1, envp) == -1) {
+		fprintf(stderr, "Cannot execute the program '%s': %s\n", argv[1], strerror(errno));
+		exit(1);
+	}
 
-	printf("This is never printed\n");
+	printf("This is never printed.\n");
 	return 0;
 }

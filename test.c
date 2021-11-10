@@ -10,11 +10,12 @@ int main()
     printf("Hello World!\n");
     
     char *p = malloc(0x100000);
-    printf("malloc 0x100000: %p\n", p);
+    printf("malloc(0x100000): %p\n", p);
 
     char *q = NULL;
-    printf("assign a value to nullptr?\n");
+    printf("Can I assign a value to nullptr?\n");
     *q = 'a';
     
     return 0;
 }
+// echo $? -> 1

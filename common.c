@@ -1,25 +1,30 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#ifndef		__COMMON_C__
+#define		__COMMON_C__
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <elf.h>
 
-#include <errno.h>
+
+#include 	<stdio.h>
+#include 	<stdlib.h>
+#include 	<string.h>
+
+#include 	<fcntl.h>
+#include 	<unistd.h>
+#include	<sys/mman.h>
+#include 	<elf.h>
+
+#include 	<errno.h>
 
 
 
 // adapted from linux/fs/binfmt_elf.c
-#define PAGE_SIZE			(size_t)(1 << 12)	// 4096 B
-#define PAGE_FLOOR(_addr)	((_addr) & ~(size_t)(PAGE_SIZE - 1))					// ELF_PAGESTART
-#define PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))								// ELF_PAGEOFFSET
-#define PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))			// ELF_PAGEALIGN
+#define 	PAGE_SIZE			(size_t)(1 << 12)	// 4096 B
+#define 	PAGE_FLOOR(_addr)	((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
+#define 	PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
+#define 	PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
-#define STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
-#define STACK_LOW			0x10000000L
-#define STACK_HIGH			(STACK_LOW + STACK_SIZE)
+#define 	STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
+#define 	STACK_LOW			0x10000000L
+#define 	STACK_HIGH			(STACK_LOW + STACK_SIZE)
 
 
 
@@ -299,3 +304,7 @@ void print_stack(const char **argv)
 	}
 	printf("auxc = %d\n", auxc);
 }
+
+
+
+#endif
