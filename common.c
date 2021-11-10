@@ -23,22 +23,22 @@
 #define 	PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
 #define 	STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
-#define 	STACK_LOW			0x10000000L
-#define 	STACK_HIGH			(STACK_LOW + STACK_SIZE)
+#define 	STACK_HIGH			0x20000000L
+#define 	STACK_LOW			(STACK_HIGH - STACK_SIZE)
+
+#define		BASE_ADDR			0x30000000L			// gcc -Ttext-segment=(BASE_ADDR) ...
 
 
 
-extern Elf64_Ehdr e_header;
-
-Elf64_Addr create_stack(const char *argv[], const char *envp[])
+Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr *ep)
 {
 	int i;
 
 	/* allocate new stack space */
 
-	fprintf(stderr, "Mapping: stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW, STACK_SIZE);
+	fprintf(stderr, "Mapping: user stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW, STACK_SIZE);
 	if (mmap((void *)STACK_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
-		perror("Error: Memory mapping failed");
+		perror("Error: Cannot allocate memory for user stack");
 		exit(1);
 	}
 
@@ -106,7 +106,7 @@ Elf64_Addr create_stack(const char *argv[], const char *envp[])
 		new_auxv[i] = auxv[i];
 		switch (auxv[i].a_type) {
 			case AT_PHNUM:			// 5: Number of program headers
-				new_auxv[i].a_un.a_val = e_header.e_phnum;
+				new_auxv[i].a_un.a_val = ep->e_phnum;
 				//fprintf(stderr, "Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 			case AT_BASE:			// 7: Base address of interpreter
@@ -114,7 +114,7 @@ Elf64_Addr create_stack(const char *argv[], const char *envp[])
 				//fprintf(stderr, "Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 			case AT_ENTRY:			// 9: Entry point of program
-				new_auxv[i].a_un.a_val = e_header.e_entry;
+				new_auxv[i].a_un.a_val = ep->e_entry;
 				//fprintf(stderr, "Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 		}

@@ -49,8 +49,10 @@ mmap_err:
 	exit(1);
 }
 
-void load_elf_binary(const char *path)
+Elf64_Ehdr load_elf_binary(const char *path)
 {
+	Elf64_Ehdr e_header;
+	
 	/* open the program */
 	int fd;
 	if ((fd = open(path, O_RDONLY)) == -1) {
@@ -77,47 +79,44 @@ void load_elf_binary(const char *path)
 		exit(1);
 	}
 	
-	/* read program header table */
-	Elf64_Phdr *p_headers;
-	if ((p_headers = malloc(e_header.e_phnum * sizeof(Elf64_Phdr))) == NULL) {
-		perror("Error: Cannot allocate memory for a program header table");
-		exit(1);
-	}
+	/* read program header table and map into memory */
 	if (lseek(fd, e_header.e_phoff, SEEK_SET) == -1) {
 		perror("Error: lseek() failed");
 		exit(1);
 	}
-	if (read(fd, p_headers, e_header.e_phnum * sizeof(Elf64_Phdr)) == -1) {
-		perror("Error: Cannot read a program header table");
-		exit(1);
-	}
-
-	/* map into memory */
-	Elf64_Addr addr_ = -1UL;
+	
+	Elf64_Phdr p_header;
 	for (int i = 0; i < e_header.e_phnum; i++) {
-		//fprintf(stderr, "Program header entry %d ", i), print_p_header(&p_headers[i]);
-		if (p_headers[i].p_type != PT_LOAD)
+		if (read(fd, &p_header, sizeof(Elf64_Phdr)) == -1) {
+			perror("Error: Cannot read a program header entry");
+			exit(1);
+		}
+		//fprintf(stderr, "Program header entry %d ", i), print_p_header(&p_header);
+
+		if (p_header.p_type != PT_LOAD)
             continue;
 		
-		if (p_headers[i].p_vaddr + p_headers[i].p_memsz > STACK_LOW) {
+		if (p_header.p_vaddr + p_header.p_memsz > STACK_LOW) {
 			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx.\n", (size_t)0, STACK_LOW);
 			exit(1);
 		}
-		map_segment(&p_headers[i], fd);
+		map_segment(&p_header, fd);
 	}
 
-	free(p_headers);
 	close(fd);
+
+	return e_header;
 }
 
 
 
 int my_execve(const char *path, const char *argv[], const char *envp[])
 {
+	Elf64_Ehdr e_header;
 	Elf64_Addr sp;
 
-	load_elf_binary(path);
-	sp = create_stack(argv, envp);
+	e_header = load_elf_binary(path);
+	sp = create_stack(argv, envp, &e_header);
 	//print_stack((const char **)(sp + sizeof(int64_t)));
 
 	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);
