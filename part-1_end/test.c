@@ -15,6 +15,7 @@ int main()
     char *q = NULL;
     printf("Can I assign a value to nullptr?\n");
     *q = 'a';
+    printf("Success!\n");
     
     return 0;
 }

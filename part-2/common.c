@@ -20,39 +20,74 @@ extern int		errno;
 
 #include		<setjmp.h>
 
-jmp_buf			*jmpbuf_p;
+jmp_buf			loader_jmpbuf;
+
+typedef struct {
+	int				state;
+	jmp_buf			jmpbuf;
+	Elf64_Addr		page_tail, page_head;
+
+	Elf64_Addr 		entry, sp;		// used if STATE_NEW
+} Thread;
+#define			STATE_NEW				0
+#define			STATE_RUN				1
+#define			STATE_WAIT				2
+#define			STATE_EXIT				3
+
 
 
 
 // adapted from linux/fs/binfmt_elf.c
-#define 		PAGE_SIZE			(size_t)(1 << 12)	// 4096 B
-#define 		PAGE_FLOOR(_addr)	((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
-#define 		PAGE_OFFSET(_addr)	((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
-#define 		PAGE_CEIL(_addr)	(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
-
-#define 		STACK_SIZE			(size_t)(1 << 26)	// 8192 KB
-#define 		STACK_HIGH			0x20000000L
-#define 		STACK_LOW			(STACK_HIGH - STACK_SIZE)
-
-#define			BASE_ADDR			0x30000000L			// gcc -Ttext-segment=(BASE_ADDR) ...
+#define 		PAGE_SIZE				(size_t)(1 << 12)	// 4096 B = 4 KB
+#define 		PAGE_FLOOR(_addr)		((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
+#define 		PAGE_OFFSET(_addr)		((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
+#define 		PAGE_CEIL(_addr)		(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
 
+// This loader can load 8 programs at most.
+#define			_THREAD_SPACE_TABLE_LOW			0L
+#define			_THREAD_SPACE_TABLE_HIGH		0x80000000L
+#define			_THREAD_SPACE_TABLE_STRIDE		((_THREAD_SPACE_TABLE_HIGH - _THREAD_SPACE_TABLE_LOW) >> 3)
+#define			THREAD_SPACE_LOW(i)				(_THREAD_SPACE_TABLE_LOW + (i) * _THREAD_SPACE_TABLE_STRIDE)
+#define			THREAD_SPACE_HIGH(i)			(_THREAD_SPACE_TABLE_LOW + ((i) + 1) * _THREAD_SPACE_TABLE_STRIDE)
 
-Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr *ep)
+#define			PAGE_TABLE_LOW					_THREAD_SPACE_TABLE_HIGH
+#define			PAGE_TABLE_HIGH					(PAGE_TABLE_LOW + (1L << 20))		// 2^32 / 2^12 = 2^20 = 1 MB
+
+#define			_THREAD_TABLE_LOW				PAGE_TABLE_HIGH
+#define			_THREAD_TABLE_HIGH				(_THREAD_TABLE_LOW + PAGE_SIZE << 3)
+#define			_THREAD_TABLE_STRIDE			((_THREAD_TABLE_HIGH - _THREAD_TABLE_LOW) >> 3)
+#define			THREAD(i)						(_THREAD_TABLE_LOW + (i) * _THREAD_TABLE_STRIDE)
+
+#define			_P_HEADER_TABLE_LOW				_THREAD_TABLE_HIGH
+#define			_P_HEADER_TABLE_HIGH			(_P_HEADER_TABLE_LOW + PAGE_SIZE << 3)
+#define			_P_HEADER_TABLE_STRIDE			((_P_HEADER_TABLE_HIGH - _P_HEADER_TABLE_LOW) >> 3)
+#define			P_HEADER(i)						(_P_HEADER_TABLE_LOW + (i) * _P_HEADER_TABLE_STRIDE)
+
+#define			STACK_SIZE						((1L << 28) - PAGE_SIZE)
+#define			_STACK_OFFSET					(_THREAD_TABLE_STRIDE - (1L << 28))
+#define			STACK_LOW(i)					(THREAD_SPACE_LOW(i) + _STACK_OFFSET)
+#define			STACK_HIGH(i)					(THREAD_SPACE_LOW(i) + _STACK_OFFSET + STACK_SIZE)
+
+#define			BASE_ADDR						0x90000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
+
+
+
+Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], const Elf64_Ehdr *ep)
 {
 	int i;
 
 
 	/* allocate new stack space */
 
-	fprintf(stderr, "Mapping: user stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW, STACK_SIZE);
-	if (mmap((void *)STACK_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+	fprintf(stderr, "Mapping: user stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW(thread_id), STACK_SIZE);
+	if (mmap((void *)STACK_LOW(thread_id), STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Cannot allocate memory for user stack");
 		exit(1);
 	}
 
 	char my_var[128];
-	sprintf(my_var, "MY_LOADER_JMPBUF=%p", (void *)jmpbuf_p);
+	sprintf(my_var, "MY_LOADER_JMPBUF=%p", (void *)&loader_jmpbuf);
 
 
 	/* get memory layout information */
@@ -85,7 +120,7 @@ Elf64_Addr create_stack(const char *argv[], const char *envp[], const Elf64_Ehdr
 	Elf64_auxv_t *new_auxv;
 	char *new_argv_asciiz_space, *new_envp_asciiz_space;
 
-	sp = STACK_HIGH;										// bottom of stack
+	sp = STACK_HIGH(thread_id);								// bottom of stack
 
 	sp -= sizeof(int64_t);									// end marker
 

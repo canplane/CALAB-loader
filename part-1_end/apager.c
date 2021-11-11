@@ -117,7 +117,7 @@ int my_execve(const char *path, const char *argv[], const char *envp[])
 
 	e_header = load_elf_binary(path);
 	sp = create_stack(argv, envp, &e_header);
-	//print_stack((const char **)(sp + sizeof(int64_t)));
+	print_stack((const char **)(sp + sizeof(int64_t)));
 
 	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);
 	fprintf(stderr, "--------\n");

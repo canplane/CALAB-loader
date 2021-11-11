@@ -49,7 +49,7 @@ mmap_err:
 	exit(1);
 }
 
-Elf64_Ehdr load_elf_binary(const char *path)
+Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 {
 	Elf64_Ehdr e_header;
 	
@@ -109,41 +109,70 @@ Elf64_Ehdr load_elf_binary(const char *path)
 }
 
 
-void init_jmpbuf(Elf64_Addr page_start, const char *argv[])
+
+int my_execve(const char *argv[], const char *envp[])
 {
-	int argc;
-	for (argc = 0; argv[argc]; argc++)
-		;
-	Elf64_Addr page_end = page_start + PAGE_CEIL((argc + 1) * sizeof(jmp_buf));
-	mmap((void *)page_start, page_end - page_start, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
-
-	jmpbuf_p = (jmp_buf *)page_start;
-}
+	int i;
 
 
-
-int my_execve(const char *path, const char *argv[], const char *envp[])
-{
-	Elf64_Ehdr e_header;
-	Elf64_Addr sp;
-		
-	e_header = load_elf_binary(path);
-
-	init_jmpbuf(STACK_HIGH, argv);
-	sp = create_stack(argv, envp, &e_header);
-	//print_stack((const char **)(sp + sizeof(int64_t)));
-
-	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);
-	fprintf(stderr, "--------\n");
-	
-	if (!setjmp(jmpbuf_p[0])) {
-		start(e_header.e_entry, sp);	// context switch
+	if (mmap((void *)PAGE_TABLE_LOW, PAGE_TABLE_HIGH - PAGE_TABLE_LOW, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+		perror("Error: Cannot allocate memory for page table");
+		exit(1);
 	}
 
-	fprintf(stderr, "--------\n");
-	fprintf(stderr, "The program '%s' ended\n", path);
+	Thread *thread = (Thread *)THREAD_LOW;
 
-	// unmap
+	Elf64_Ehdr e_header;
+	for (int i = 0; argv[i]; i++) {
+		if (mmap((void *)THREAD(i), THREAD_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+			perror("Error: Cannot allocate memory for context table");
+			exit(1);
+		}
+
+		e_header = load_elf_binary(i, argv[i]);
+
+		thread[i].entry = e_header.e_entry;
+		thread[i].sp = create_stack(i, argv, envp, &e_header);
+		//print_stack((const char **)(sp + sizeof(int64_t)));
+
+		ready_q_push(i);
+	}
+
+
+	while (!ready_q_empty()) {
+		i = ready_q_pop();
+		
+		if (!setjmp(loader_jmpbuf)) {
+			if (thread[i].state == STATE_NEW) {
+				fprintf(stderr, "Executing the program '%s'...\n", argv[i]);
+				fprintf(stderr, "--------\n");
+
+				start(thread[i].entry, thread[i].sp);	// context switch
+			}
+			else {
+				fprintf(stderr, "Continuing the program '%s'...\n", argv[i]);
+				fprintf(stderr, "--------\n");
+
+				loadjmp(thread[i].jmpbuf, 1);			// context switch
+			}
+		}
+
+		fprintf(stderr, "--------\n");
+		if (thread[i].state == STATE_WAIT) {
+			fprintf(stderr, "The program '%s' waited\n", argv[i]);
+			ready_q_push(i);
+		}
+		else {	// STATE_END
+			fprintf(stderr, "The program '%s' ended\n", argv[i]);
+
+			// unmap
+			for (Elf64_Addr addr = thread[i].page_tail; ; addr = *(Elf64_Addr *)addr) {
+				munmap((void *)addr, PAGE_SIZE);
+				if (addr == thread[i].page_head)
+					break;
+			}
+		}
+	}
 
 	return 0;
 }
@@ -161,7 +190,7 @@ int main(int argc, const char **argv, const char **envp)
         fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
         exit(1);
     }
-	if (execve(argv[1], argv + 1, envp) == -1) {
+	if (execve(argv + 1, envp) == -1) {
 		fprintf(stderr, "Cannot execute the program '%s': %s\n", argv[1], strerror(errno));
 		exit(1);
 	}
