@@ -45,7 +45,7 @@ Elf64_Ehdr read_elf_binary(const char *path)
 	
 	/* allocate memory to program header table */
 	if (e_header.e_phnum * sizeof(Elf64_Phdr) > BASE_ADDR - STACK_HIGH) {
-		fprintf(stderr, "Error: The size of program header table is too large to store into memory. Do not exceed %#lx.\n", BASE_ADDR - STACK_HIGH);
+		fprintf(stderr, "Error: The size of program header table is too large to store into memory. Cannot exceed %#lx.\n", BASE_ADDR - STACK_HIGH);
 		exit(1);
 	}
 	//fprintf(stderr, "Mapping: program header table -> (memory address = %#lx, size = %#lx)\n", STACK_HIGH, PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)));
