@@ -18,7 +18,7 @@ typedef struct {
 } Queue;
 
 
-#define Queue__init(array)					__Queue__init((void *)(array), sizeof(array), sizeof(*array))
+#define 		Queue__init(array)						__Queue__init((void *)(array), sizeof(array), sizeof(*array))
 Queue __Queue__init(void *array, int container_size, int element_size)
 {
 	Queue q;
@@ -32,10 +32,10 @@ Queue __Queue__init(void *array, int container_size, int element_size)
 }
 
 
-#define	__Queue__addr(_q, _idx) 			(void *)((unsigned long)(_q)->_array + (_idx) * (_q)->_element_size)
+#define			__Queue__addr(_q, _idx) 				(void *)((unsigned long)(_q)->_array + (_idx) * (_q)->_element_size)
 
 
-#define Queue__push(q, src)					__Queue__push((q), (void *)&(src))
+#define 		Queue__push(q, src)						__Queue__push((q), (void *)&(src))
 bool __Queue__push(Queue *q, const void *src)
 {
 	int tmp;
@@ -58,13 +58,13 @@ bool Queue__pop(Queue *q)
 }
 
 
-#define Queue__front(q, type)				*(type *)__Queue__front(q)
+#define 		Queue__front(q, type)					*(type *)__Queue__front(q)
 void *__Queue__front(const Queue *q)
 {
 	return __Queue__addr(q, (q->_front + 1) % q->_array_length);
 }
 
-#define Queue__back(q, type)				*(type *)__Queue__back(q))
+#define 		Queue__back(q, type)					*(type *)__Queue__back(q))
 void *__Queue__back(const Queue *q)
 {
 	return __Queue__addr(q, (q->_back + 1) % q->_array_length);

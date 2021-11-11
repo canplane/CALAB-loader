@@ -133,7 +133,7 @@ int my_execve(const char *argv[], const char *envp[])
 	char *envp_added[8], envp_added_asciiz_space[256];
 
 	i = 0;
-	i += sprintf(envp_added[0] = (envp_added_asciiz_space + 1), "%s=%p", ISR_ADDR_ENV_VARNAME, (void *)loader_ISR);
+	i += sprintf(envp_added[0] = (envp_added_asciiz_space + 1), "%s=%p", __CALAB_LOADER__ENVVARNAME__CALL, (void *)loader_call);
 	envp_added[1] = NULL;
 
 	
@@ -160,7 +160,7 @@ int my_execve(const char *argv[], const char *envp[])
 	while (!Queue__empty(&ready_q)) {
 		i = Queue__front(&ready_q, int), Queue__pop(&ready_q);
 		
-		fprintf(stderr, "%s the program '%s'...\n", thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", argv[i]);
+		fprintf(stderr, "%s the thread '%s'...\n", thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", argv[i]);
 		fprintf(stderr, "--------\n");
 
 		run(i);
@@ -170,10 +170,10 @@ int my_execve(const char *argv[], const char *envp[])
 		if (thread[i].state == THREAD_STATE_WAIT) {
 			Queue__push(&ready_q, i);
 
-			fprintf(stderr, "The program '%s' waited\n", argv[i]);
+			fprintf(stderr, "The thread '%s' waited\n", argv[i]);
 		}
 		else {	// STATE_END
-			fprintf(stderr, "The program '%s' ended\n", argv[i]);
+			fprintf(stderr, "The thread '%s' ended with exit code %d\n", argv[i], thread[i].exit_code);
 
 			// unmap
 			/*for (Elf64_Addr addr = thread[i].page_tail; ; addr = *(Elf64_Addr *)addr) {
@@ -186,7 +186,7 @@ int my_execve(const char *argv[], const char *envp[])
 
 	return 0;
 }
-#define 		execve 				my_execve
+#define 		execve 									my_execve
 
 
 

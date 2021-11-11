@@ -20,67 +20,77 @@ extern int		errno;
 #include		"queue.c"
 
 
+
+/* memory layout */
+
+// adapted from linux/fs/binfmt_elf.c
+#define 		PAGE_SIZE								(size_t)(1 << 12)					// 4096 B = 4 KB
+#define 		PAGE_FLOOR(_addr)						((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
+#define 		PAGE_OFFSET(_addr)						((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
+#define 		PAGE_CEIL(_addr)						(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
+
+
+
+#define			__LOG2_THREAD_MAX_NUM					2		// This loader can load 4 programs at most.
+#define			THREAD_MAX_NUM							(1 << __LOG2_THREAD_MAX_NUM)
+
+
+#define			THREADS_LOW								0L
+#define			THREADS_HIGH							0x40000000L
+#define			THREAD_STRIDE							((THREADS_HIGH - THREADS_LOW) >> __LOG2_THREAD_MAX_NUM)
+#define			THREAD_SPACE_LOW(_tid)					(THREADS_LOW + (_tid) * THREAD_STRIDE)
+#define			THREAD_SPACE_HIGH(_tid)					(THREADS_LOW + ((_tid) + 1) * THREAD_STRIDE)
+
+
+#define			__STACK_SIZE_WITH_PADDING				(1L << 23)
+#define			PADDING									PAGE_SIZE
+
+#define			STACK_SPACE_HIGH(_tid)					(THREAD_SPACE_HIGH(_tid) - PADDING)
+#define			STACK_SPACE_LOW(_tid)					((THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING) + PADDING)
+#define			STACK_SIZE								(__STACK_SIZE_WITH_PADDING - PADDING << 1)		// 8 MB - 8 KB
+
+#define			SEGMENT_SPACE_LOW(_tid)					THREAD_SPACE_LOW(_tid)
+#define			SEGMENT_SPACE_HIGH(_tid)				(THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING)
+
+
+#define			PAGE_TABLE_LOW							THREADS_HIGH
+#define			PAGE_TABLE_HIGH							(PAGE_TABLE_LOW + (1L << 20))		// 2^32 / 2^12 = 2^20 = 1 MB
+
+
+#define			P_HEADERS_LOW							PAGE_TABLE_HIGH
+#define			P_HEADERS_HIGH							(P_HEADERS_LOW + PAGE_SIZE << __LOG2_THREAD_MAX_NUM)
+#define			P_HEADER_STRIDE							((P_HEADERS_HIGH - P_HEADERS_LOW) >> __LOG2_THREAD_MAX_NUM)
+#define			P_HEADER(_tid)							(P_HEADERS_LOW + (_tid) * P_HEADER_STRIDE)
+
+
+#define			BASE_ADDR								0x50000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
+
+
+
+/* thread */
+
+#include		<stdarg.h>
 #include		<setjmp.h>
+
+#define			THREAD_STATE_NEW						0
+#define			THREAD_STATE_RUN						1
+#define			THREAD_STATE_WAIT						2
+#define			THREAD_STATE_EXIT						3
+
+#define			__CALAB_LOADER__ENVVARNAME__CALL		"__CALAB_LOADER__CALL"
+
+#define			__CALAB_LOADER__CALL__exit				1
+#define			__CALAB_LOADER__CALL__yield				2
+
 
 typedef struct {
 	int				state;
 	jmp_buf			jmpenv;
 	Elf64_Addr		page_tail, page_head;
 
-	Elf64_Addr 		entry, sp;		// used if STATE_NEW
+	Elf64_Addr 		entry, sp;		// used at STATE_NEW
+	int				exit_code;		// used at STATE_EXIT
 } Thread;
-#define			THREAD_STATE_NEW			0
-#define			THREAD_STATE_RUN			1
-#define			THREAD_STATE_WAIT			2
-#define			THREAD_STATE_EXIT			3
-
-
-
-
-// adapted from linux/fs/binfmt_elf.c
-#define 		PAGE_SIZE					(size_t)(1 << 12)					// 4096 B = 4 KB
-#define 		PAGE_FLOOR(_addr)			((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
-#define 		PAGE_OFFSET(_addr)			((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
-#define 		PAGE_CEIL(_addr)			(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
-
-
-// This loader can load 4 programs at most.
-#define			__LOG2_THREAD_MAX_NUM		2
-#define			THREAD_MAX_NUM				(1 << __LOG2_THREAD_MAX_NUM)
-
-
-#define			THREADS_LOW					0L
-#define			THREADS_HIGH				0x40000000L
-#define			THREAD_STRIDE				((THREADS_HIGH - THREADS_LOW) >> __LOG2_THREAD_MAX_NUM)
-#define			THREAD_SPACE_LOW(_tid)		(THREADS_LOW + (_tid) * THREAD_STRIDE)
-#define			THREAD_SPACE_HIGH(_tid)		(THREADS_LOW + ((_tid) + 1) * THREAD_STRIDE)
-
-
-#define			__STACK_SIZE_WITH_PADDING	(1L << 23)
-#define			PADDING						PAGE_SIZE
-
-#define			STACK_SPACE_HIGH(_tid)		(THREAD_SPACE_HIGH(_tid) - PADDING)
-#define			STACK_SPACE_LOW(_tid)		((THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING) + PADDING)
-#define			STACK_SIZE					(__STACK_SIZE_WITH_PADDING - PADDING << 1)		// 8 MB - 8 KB
-
-#define			SEGMENT_SPACE_LOW(_tid)		THREAD_SPACE_LOW(_tid)
-#define			SEGMENT_SPACE_HIGH(_tid)	(THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING)
-
-
-#define			PAGE_TABLE_LOW				THREADS_HIGH
-#define			PAGE_TABLE_HIGH				(PAGE_TABLE_LOW + (1L << 20))		// 2^32 / 2^12 = 2^20 = 1 MB
-
-
-#define			P_HEADERS_LOW				PAGE_TABLE_HIGH
-#define			P_HEADERS_HIGH				(P_HEADERS_LOW + PAGE_SIZE << __LOG2_THREAD_MAX_NUM)
-#define			P_HEADER_STRIDE				((P_HEADERS_HIGH - P_HEADERS_LOW) >> __LOG2_THREAD_MAX_NUM)
-#define			P_HEADER(_tid)				(P_HEADERS_LOW + (_tid) * P_HEADER_STRIDE)
-
-
-#define			BASE_ADDR					0x50000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
-
-
-
 
 jmp_buf			loader_jmpenv;
 Thread 			thread[THREAD_MAX_NUM];
@@ -89,28 +99,36 @@ int 			current_thread_idx = -1;
 
 
 
-/* interrupt service routine: call by a thread */
-//char			interrupt_param_buf[1024];
-
-int loader_ISR(int code)
+// interrupt service routine: call by a thread
+int loader_call(int code, ...)
 {
+	va_list ap;
+	va_start(ap, code);
+	
+	int ret = 0;
 	switch (code) {
-		case 1:		// exit
+		case __CALAB_LOADER__CALL__exit:
 			thread[current_thread_idx].state = THREAD_STATE_EXIT;
+			ret = thread[current_thread_idx].exit_code = va_arg(ap, int);
+
 			if (!setjmp(thread[current_thread_idx].jmpenv))
 				longjmp(loader_jmpenv, true);
-			return 0;
+			break;
 
-		case 2:		// yield
+		case __CALAB_LOADER__CALL__yield:
 			thread[current_thread_idx].state = THREAD_STATE_WAIT;
 			if (!setjmp(thread[current_thread_idx].jmpenv))
 				longjmp(loader_jmpenv, true);
-			return 0;
+			break;
 
 		default:
-			fprintf(stderr, "%s(): Invalid call code: %d\n", __func__, code);
-			return -1;
+			fprintf(stderr, "Warning: Invalid call code: %d\n", code);
+			ret = -1;
+			break;
 	}
+
+	va_end(ap);
+	return ret;
 }
 
 int run(int thread_id)
@@ -120,27 +138,11 @@ int run(int thread_id)
 	if (!setjmp(loader_jmpenv)) {
 		if (thread[thread_id].state == THREAD_STATE_NEW) {
 			__asm__ __volatile__ (
-				"movq $0, %%rdx\n\t"
+				"movq $0, %%rdx\n\t"	// (%r9 = %rdx) executed at <_start>
 				"movq %0, %%rsp\n\t"
 				"jmp *%1"
 				: : "a" (thread[thread_id].sp), "b" (thread[thread_id].entry)
 			);
-			/*
-				...8:	argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
-				...0:	argc					[]			[]			[]
-															%rax		%rax
-																		&(%rax)
-						// %r9 = %rdx
-									// %rsi = argc
-									// %rdx = (%rsp = &argv[0])
-																		// %r8  = _libc_csu_fini
-																		// %rcx = _libc_csu_init
-																		// %rdi = main
-
-						_libc_start_main(
-							%rdi=main, %rsi=argc, %rdx=argv, %rcx=_libc_csu_init, %r8=_libc_csu_fini, %r9
-						)
-			 */
 		}
 		else
 			longjmp(thread[thread_id].jmpenv, 1);		// context switch
@@ -151,7 +153,6 @@ int run(int thread_id)
 }
 
 
-#define			ISR_ADDR_ENV_VARNAME		"CALAB_LOADER__ISR_ADDR"
 
 Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], const char *envp_added[], const Elf64_Ehdr *ep)
 {
@@ -281,7 +282,7 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 
 /* for debugging */
-
+/*
 void print_e_header(const Elf64_Ehdr *ep)
 {
 	fprintf(stderr, "{\n");
@@ -411,7 +412,7 @@ void print_stack(const char **argv)
 	}
 	printf("auxc = %d\n", auxc);
 }
-
+ */
 
 
 #endif
