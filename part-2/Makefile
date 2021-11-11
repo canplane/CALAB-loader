@@ -1,11 +1,11 @@
-all: apager2 test
+all: apager test
 
-apager2: apager2.c common.c
-	gcc -static -Wl,-Ttext-segment=0x90000000 apager2.c -o apager2
+apager: apager.c common.c queue.c branch.c
+	gcc -static -Wl,-Ttext-segment=0x50000000 apager.c -o apager
 
 test: test.c
 	gcc -static test.c -o test
 
 clean:
-	rm -f apager2
+	rm -f apager
 	rm -f test

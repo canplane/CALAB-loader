@@ -6,6 +6,7 @@
 #include 		<stdio.h>
 #include 		<stdlib.h>
 #include 		<string.h>
+#include		<stdbool.h>
 
 #include 		<fcntl.h>
 #include 		<unistd.h>
@@ -16,78 +17,154 @@
 
 extern int		errno;
 
+#include		"queue.c"
 
 
 #include		<setjmp.h>
 
-jmp_buf			loader_jmpbuf;
-
 typedef struct {
 	int				state;
-	jmp_buf			jmpbuf;
+	jmp_buf			jmpenv;
 	Elf64_Addr		page_tail, page_head;
 
 	Elf64_Addr 		entry, sp;		// used if STATE_NEW
 } Thread;
-#define			STATE_NEW				0
-#define			STATE_RUN				1
-#define			STATE_WAIT				2
-#define			STATE_EXIT				3
+#define			THREAD_STATE_NEW			0
+#define			THREAD_STATE_RUN			1
+#define			THREAD_STATE_WAIT			2
+#define			THREAD_STATE_EXIT			3
 
 
 
 
 // adapted from linux/fs/binfmt_elf.c
-#define 		PAGE_SIZE				(size_t)(1 << 12)	// 4096 B = 4 KB
-#define 		PAGE_FLOOR(_addr)		((_addr) & ~(size_t)(PAGE_SIZE - 1))				// ELF_PAGESTART
-#define 		PAGE_OFFSET(_addr)		((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
-#define 		PAGE_CEIL(_addr)		(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
+#define 		PAGE_SIZE					(size_t)(1 << 12)					// 4096 B = 4 KB
+#define 		PAGE_FLOOR(_addr)			((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
+#define 		PAGE_OFFSET(_addr)			((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
+#define 		PAGE_CEIL(_addr)			(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
 
-// This loader can load 8 programs at most.
-#define			_THREAD_SPACE_TABLE_LOW			0L
-#define			_THREAD_SPACE_TABLE_HIGH		0x80000000L
-#define			_THREAD_SPACE_TABLE_STRIDE		((_THREAD_SPACE_TABLE_HIGH - _THREAD_SPACE_TABLE_LOW) >> 3)
-#define			THREAD_SPACE_LOW(i)				(_THREAD_SPACE_TABLE_LOW + (i) * _THREAD_SPACE_TABLE_STRIDE)
-#define			THREAD_SPACE_HIGH(i)			(_THREAD_SPACE_TABLE_LOW + ((i) + 1) * _THREAD_SPACE_TABLE_STRIDE)
-
-#define			PAGE_TABLE_LOW					_THREAD_SPACE_TABLE_HIGH
-#define			PAGE_TABLE_HIGH					(PAGE_TABLE_LOW + (1L << 20))		// 2^32 / 2^12 = 2^20 = 1 MB
-
-#define			_THREAD_TABLE_LOW				PAGE_TABLE_HIGH
-#define			_THREAD_TABLE_HIGH				(_THREAD_TABLE_LOW + PAGE_SIZE << 3)
-#define			_THREAD_TABLE_STRIDE			((_THREAD_TABLE_HIGH - _THREAD_TABLE_LOW) >> 3)
-#define			THREAD(i)						(_THREAD_TABLE_LOW + (i) * _THREAD_TABLE_STRIDE)
-
-#define			_P_HEADER_TABLE_LOW				_THREAD_TABLE_HIGH
-#define			_P_HEADER_TABLE_HIGH			(_P_HEADER_TABLE_LOW + PAGE_SIZE << 3)
-#define			_P_HEADER_TABLE_STRIDE			((_P_HEADER_TABLE_HIGH - _P_HEADER_TABLE_LOW) >> 3)
-#define			P_HEADER(i)						(_P_HEADER_TABLE_LOW + (i) * _P_HEADER_TABLE_STRIDE)
-
-#define			STACK_SIZE						((1L << 28) - PAGE_SIZE)
-#define			_STACK_OFFSET					(_THREAD_TABLE_STRIDE - (1L << 28))
-#define			STACK_LOW(i)					(THREAD_SPACE_LOW(i) + _STACK_OFFSET)
-#define			STACK_HIGH(i)					(THREAD_SPACE_LOW(i) + _STACK_OFFSET + STACK_SIZE)
-
-#define			BASE_ADDR						0x90000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
+// This loader can load 4 programs at most.
+#define			__LOG2_THREAD_MAX_NUM		2
+#define			THREAD_MAX_NUM				(1 << __LOG2_THREAD_MAX_NUM)
 
 
+#define			THREADS_LOW					0L
+#define			THREADS_HIGH				0x40000000L
+#define			THREAD_STRIDE				((THREADS_HIGH - THREADS_LOW) >> __LOG2_THREAD_MAX_NUM)
+#define			THREAD_SPACE_LOW(_tid)		(THREADS_LOW + (_tid) * THREAD_STRIDE)
+#define			THREAD_SPACE_HIGH(_tid)		(THREADS_LOW + ((_tid) + 1) * THREAD_STRIDE)
 
-Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], const Elf64_Ehdr *ep)
+
+#define			__STACK_SIZE_WITH_PADDING	(1L << 23)
+#define			PADDING						PAGE_SIZE
+
+#define			STACK_SPACE_HIGH(_tid)		(THREAD_SPACE_HIGH(_tid) - PADDING)
+#define			STACK_SPACE_LOW(_tid)		((THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING) + PADDING)
+#define			STACK_SIZE					(__STACK_SIZE_WITH_PADDING - PADDING << 1)		// 8 MB - 8 KB
+
+#define			SEGMENT_SPACE_LOW(_tid)		THREAD_SPACE_LOW(_tid)
+#define			SEGMENT_SPACE_HIGH(_tid)	(THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING)
+
+
+#define			PAGE_TABLE_LOW				THREADS_HIGH
+#define			PAGE_TABLE_HIGH				(PAGE_TABLE_LOW + (1L << 20))		// 2^32 / 2^12 = 2^20 = 1 MB
+
+
+#define			P_HEADERS_LOW				PAGE_TABLE_HIGH
+#define			P_HEADERS_HIGH				(P_HEADERS_LOW + PAGE_SIZE << __LOG2_THREAD_MAX_NUM)
+#define			P_HEADER_STRIDE				((P_HEADERS_HIGH - P_HEADERS_LOW) >> __LOG2_THREAD_MAX_NUM)
+#define			P_HEADER(_tid)				(P_HEADERS_LOW + (_tid) * P_HEADER_STRIDE)
+
+
+#define			BASE_ADDR					0x50000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
+
+
+
+
+jmp_buf			loader_jmpenv;
+Thread 			thread[THREAD_MAX_NUM];
+
+int 			current_thread_idx = -1;
+
+
+
+/* interrupt service routine: call by a thread */
+//char			interrupt_param_buf[1024];
+
+int loader_ISR(int code)
+{
+	switch (code) {
+		case 1:		// exit
+			thread[current_thread_idx].state = THREAD_STATE_EXIT;
+			if (!setjmp(thread[current_thread_idx].jmpenv))
+				longjmp(loader_jmpenv, true);
+			return 0;
+
+		case 2:		// yield
+			thread[current_thread_idx].state = THREAD_STATE_WAIT;
+			if (!setjmp(thread[current_thread_idx].jmpenv))
+				longjmp(loader_jmpenv, true);
+			return 0;
+
+		default:
+			fprintf(stderr, "%s(): Invalid call code: %d\n", __func__, code);
+			return -1;
+	}
+}
+
+int run(int thread_id)
+{
+	current_thread_idx = thread_id;
+
+	if (!setjmp(loader_jmpenv)) {
+		if (thread[thread_id].state == THREAD_STATE_NEW) {
+			__asm__ __volatile__ (
+				"movq $0, %%rdx\n\t"
+				"movq %0, %%rsp\n\t"
+				"jmp *%1"
+				: : "a" (thread[thread_id].sp), "b" (thread[thread_id].entry)
+			);
+			/*
+				...8:	argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
+				...0:	argc					[]			[]			[]
+															%rax		%rax
+																		&(%rax)
+						// %r9 = %rdx
+									// %rsi = argc
+									// %rdx = (%rsp = &argv[0])
+																		// %r8  = _libc_csu_fini
+																		// %rcx = _libc_csu_init
+																		// %rdi = main
+
+						_libc_start_main(
+							%rdi=main, %rsi=argc, %rdx=argv, %rcx=_libc_csu_init, %r8=_libc_csu_fini, %r9
+						)
+			 */
+		}
+		else
+			longjmp(thread[thread_id].jmpenv, 1);		// context switch
+	}
+
+	current_thread_idx = -1;
+	return 0;
+}
+
+
+#define			ISR_ADDR_ENV_VARNAME		"CALAB_LOADER__ISR_ADDR"
+
+Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], const char *envp_added[], const Elf64_Ehdr *ep)
 {
 	int i;
 
 
 	/* allocate new stack space */
 
-	fprintf(stderr, "Mapping: user stack -> (memory address = %#lx, size = %#lx)\n", STACK_LOW(thread_id), STACK_SIZE);
-	if (mmap((void *)STACK_LOW(thread_id), STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+	fprintf(stderr, "Mapping: user stack -> (memory address = %#lx, size = %#lx)\n", STACK_SPACE_LOW(thread_id), STACK_SIZE);
+	if (mmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Cannot allocate memory for user stack");
 		exit(1);
 	}
-
-	char my_var[128];
-	sprintf(my_var, "MY_LOADER_JMPBUF=%p", (void *)&loader_jmpbuf);
 
 
 	/* get memory layout information */
@@ -95,6 +172,9 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	Elf64_auxv_t *auxv;
 	int argc, envc, auxc;
 	size_t argv_asciiz_space_size, envp_asciiz_space_size;
+
+	int envc_added;
+	size_t envp_added_asciiz_space_size;
 
 	argv_asciiz_space_size = 0;								// argc, argument ASCIIZ strings
 	for (i = 0; argv[i]; i++)
@@ -105,6 +185,11 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	for (i = 0; envp[i]; i++)
 		envp_asciiz_space_size += strlen(envp[i]) + 1;
 	envc = i;
+
+	envp_added_asciiz_space_size = 0;						// 		+ additional envp to interact loader with thread
+	for (i = 0; envp_added[i]; i++)
+		envp_added_asciiz_space_size += strlen(envp_added[i]) + 1;
+	envc_added = i;
 
 	auxv = (Elf64_auxv_t *)(envp + envc + 1);				// auxc
 	for (i = 0; auxv[i].a_type != AT_NULL; i++)
@@ -120,12 +205,12 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	Elf64_auxv_t *new_auxv;
 	char *new_argv_asciiz_space, *new_envp_asciiz_space;
 
-	sp = STACK_HIGH(thread_id);								// bottom of stack
+	sp = STACK_SPACE_HIGH(thread_id);						// bottom of stack
 
 	sp -= sizeof(int64_t);									// end marker
 
 	sp -= envp_asciiz_space_size;							// environment ASCIIZ string space
-	sp -= strlen(my_var);									// 	+ my_var
+	sp -= envp_added_asciiz_space_size;						// 		+ additional envp to interact loader with thread
 	new_envp_asciiz_space = (char *)sp;
 	
 	sp -= argv_asciiz_space_size;							// argument ASCIIZ string space
@@ -137,7 +222,7 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	new_auxv = (Elf64_auxv_t *)sp;
 	
 	sp -= (envc + 1) * sizeof(char *);						// envp
-	sp -= sizeof(char *);									// 	+ my_var
+	sp -= envc_added * sizeof(char *);						// 		+ additional envp to interact loader with thread
 	new_envp = (char **)sp;
 	
 	sp -= (argc + 1) * sizeof(char *);						// argv
@@ -174,8 +259,10 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 		memcpy((void *)_sp, envp[i], len = strlen(envp[i]) + 1);
 		new_envp[i] = (void *)_sp, _sp += len;
 	}
-	memcpy((void *)_sp, my_var, len = strlen(my_var) + 1);	// 	+ my_var
-	new_envp[envc] = (void *)_sp, _sp += len;
+	for (i = 0; i < envc_added; i++) {						// 	+ my_var
+		memcpy((void *)_sp, envp_added[i], len = strlen(envp_added[i]) + 1);
+		new_envp[envc + i] = (void *)_sp, _sp += len;
+	}
 
 	_sp = (Elf64_Addr)new_argv_asciiz_space;				// argv, argument ASCIIZ strings
 	for (i = 0; i < argc; i++) {
@@ -189,37 +276,6 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	/* return stack pointer */
 
 	return sp;
-}
-
-
-
-void start(Elf64_Addr entry, Elf64_Addr sp)
-{
-	__asm__ __volatile__ (
-		"movq $0, %%rdx\n\t"
-		"movq %0, %%rsp\n\t"
-		"jmp *%1"
-		: : "a" (sp), "b" (entry)
-	);
-
-    /*
-
-...8:	argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
-...0:	argc					[]			[]			[]
-											%rax		%rax
-														&(%rax)
-		// %r9 = %rdx
-					// %rsi = argc
-					// %rdx = (%rsp = &argv[0])
-														// %r8  = _libc_csu_fini
-														// %rcx = _libc_csu_init
-														// %rdi = main
-
-		_libc_start_main(
-			%rdi=main, %rsi=argc, %rdx=argv, %rcx=_libc_csu_init, %r8=_libc_csu_fini, %r9
-		)
-    
-	 */
 }
 
 

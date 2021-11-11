@@ -7,7 +7,7 @@
 
 
 
-void map_segment(const Elf64_Phdr *pp, int fd) {
+void map_segment(int thread_id, const Elf64_Phdr *pp, int fd) {
 	Elf64_Addr segment_start, bss_start, bss_end;
 	segment_start = pp->p_vaddr;
 	bss_start = segment_start + pp->p_filesz, bss_end = segment_start + pp->p_memsz;
@@ -51,21 +51,26 @@ mmap_err:
 
 Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 {
+	Elf64_Addr addr_lower_bound, addr_upper_bound;
+	addr_lower_bound = SEGMENT_SPACE_LOW(thread_id);
+	addr_upper_bound = SEGMENT_SPACE_HIGH(thread_id);
+
+
 	Elf64_Ehdr e_header;
 	
 	/* open the program */
 	int fd;
 	if ((fd = open(path, O_RDONLY)) == -1) {
-        fprintf(stderr, "Error: Cannot open the program '%s': %s\n", path, strerror(errno));
+		fprintf(stderr, "Error: Cannot open the program '%s': %s\n", path, strerror(errno));
 		exit(1);
-    }
+	}
 
 	/* read ELF header */
 	if (read(fd, &e_header, sizeof(Elf64_Ehdr)) == -1) {
 		perror("Error: Cannot read ELF header");
 		exit(1);
 	}
-    //fprintf(stderr, "ELF header "), print_e_header(&e_header);
+	//fprintf(stderr, "ELF header "), print_e_header(&e_header);
 	if (strncmp((const char *)e_header.e_ident, "\x7f""ELF", 4)) {		// magic number
 		fprintf(stderr, "Error: Not ELF object file\n");
 		exit(1);
@@ -74,7 +79,7 @@ Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 		fprintf(stderr, "Error: Not 64-bit object\n");
 		exit(1);
 	}
-    if (e_header.e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
+	if (e_header.e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
 		fprintf(stderr, "Error: This loader only support static linked executables. (ET_EXEC)\n");
 		exit(1);
 	}
@@ -94,13 +99,14 @@ Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 		//fprintf(stderr, "Program header entry %d ", i), print_p_header(&p_header);
 
 		if (p_header.p_type != PT_LOAD)
-            continue;
-		
-		if (p_header.p_vaddr + p_header.p_memsz > STACK_LOW) {
-			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx.\n", (size_t)0, STACK_LOW);
+			continue;
+
+		if ((addr_lower_bound < p_header.p_vaddr) && (p_header.p_vaddr + p_header.p_memsz <= addr_upper_bound))
+			map_segment(thread_id, &p_header, fd);
+		else {
+			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx.\n", addr_lower_bound, addr_upper_bound);
 			exit(1);
 		}
-		map_segment(&p_header, fd);
 	}
 
 	close(fd);
@@ -114,63 +120,67 @@ int my_execve(const char *argv[], const char *envp[])
 {
 	int i;
 
+	/* allocate page table */
 
 	if (mmap((void *)PAGE_TABLE_LOW, PAGE_TABLE_HIGH - PAGE_TABLE_LOW, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Cannot allocate memory for page table");
 		exit(1);
 	}
 
-	Thread *thread = (Thread *)THREAD_LOW;
+
+	/* make user-defined envp */
+
+	char *envp_added[8], envp_added_asciiz_space[256];
+
+	i = 0;
+	i += sprintf(envp_added[0] = (envp_added_asciiz_space + 1), "%s=%p", ISR_ADDR_ENV_VARNAME, (void *)loader_ISR);
+	envp_added[1] = NULL;
+
+	
+	/* load threads and init ready queue */
+
+	int _ready_q_array[THREAD_MAX_NUM + 1];
+	Queue ready_q = Queue__init(_ready_q_array);
 
 	Elf64_Ehdr e_header;
-	for (int i = 0; argv[i]; i++) {
-		if (mmap((void *)THREAD(i), THREAD_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
-			perror("Error: Cannot allocate memory for context table");
-			exit(1);
-		}
-
+	for (i = 0; argv[i]; i++) {
 		e_header = load_elf_binary(i, argv[i]);
 
+		thread[i].state = THREAD_STATE_NEW;
 		thread[i].entry = e_header.e_entry;
-		thread[i].sp = create_stack(i, argv, envp, &e_header);
+		thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
 		//print_stack((const char **)(sp + sizeof(int64_t)));
 
-		ready_q_push(i);
+		Queue__push(&ready_q, i);
 	}
 
 
-	while (!ready_q_empty()) {
-		i = ready_q_pop();
+	/* run threads */
+
+	while (!Queue__empty(&ready_q)) {
+		i = Queue__front(&ready_q, int), Queue__pop(&ready_q);
 		
-		if (!setjmp(loader_jmpbuf)) {
-			if (thread[i].state == STATE_NEW) {
-				fprintf(stderr, "Executing the program '%s'...\n", argv[i]);
-				fprintf(stderr, "--------\n");
+		fprintf(stderr, "%s the program '%s'...\n", thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", argv[i]);
+		fprintf(stderr, "--------\n");
 
-				start(thread[i].entry, thread[i].sp);	// context switch
-			}
-			else {
-				fprintf(stderr, "Continuing the program '%s'...\n", argv[i]);
-				fprintf(stderr, "--------\n");
-
-				loadjmp(thread[i].jmpbuf, 1);			// context switch
-			}
-		}
+		run(i);
 
 		fprintf(stderr, "--------\n");
-		if (thread[i].state == STATE_WAIT) {
+
+		if (thread[i].state == THREAD_STATE_WAIT) {
+			Queue__push(&ready_q, i);
+
 			fprintf(stderr, "The program '%s' waited\n", argv[i]);
-			ready_q_push(i);
 		}
 		else {	// STATE_END
 			fprintf(stderr, "The program '%s' ended\n", argv[i]);
 
 			// unmap
-			for (Elf64_Addr addr = thread[i].page_tail; ; addr = *(Elf64_Addr *)addr) {
+			/*for (Elf64_Addr addr = thread[i].page_tail; ; addr = *(Elf64_Addr *)addr) {
 				munmap((void *)addr, PAGE_SIZE);
 				if (addr == thread[i].page_head)
 					break;
-			}
+			}*/
 		}
 	}
 
@@ -187,9 +197,9 @@ int my_execve(const char *argv[], const char *envp[])
 int main(int argc, const char **argv, const char **envp)
 {
 	if (argc < 2) {
-        fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
-        exit(1);
-    }
+		fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
+		exit(1);
+	}
 	if (execve(argv + 1, envp) == -1) {
 		fprintf(stderr, "Cannot execute the program '%s': %s\n", argv[1], strerror(errno));
 		exit(1);
