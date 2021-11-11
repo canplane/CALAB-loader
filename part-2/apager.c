@@ -1,6 +1,7 @@
-#ifndef			__APAGER2_C__
-#define			__APAGER2_C__
+#ifndef			__APAGER_C__
+#define			__APAGER_C__
 
+#define			__LOAD_BACK_TO_BACK__
 
 
 #include 		"./common.c"
@@ -29,6 +30,7 @@ void map_segment(int thread_id, const Elf64_Phdr *pp, int fd) {
 	fprintf(stderr, ERR_STYLE__"Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, offset, page_start, page_end - page_start);
 	if (mmap((void *)page_start, page_end - page_start, elf_prot, elf_flags, fd, offset) == MAP_FAILED)
 		goto mmap_err;
+	set_page_table(thread_id, page_start, page_end);
 	
 
 	// .bss: read-write zero-initialized anonymous memory
@@ -40,6 +42,7 @@ void map_segment(int thread_id, const Elf64_Phdr *pp, int fd) {
 			fprintf(stderr, ERR_STYLE__"Mapping: .bss -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, page_start, page_end - page_start);
 			if (mmap((void *)page_start, page_end - page_start, elf_prot, elf_flags | MAP_ANONYMOUS, -1, 0) == MAP_FAILED)
 				goto mmap_err;
+			set_page_table(thread_id, page_start, page_end);
 		}
 	}
 	return;
@@ -52,11 +55,13 @@ mmap_err:
 Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 {
 	Elf64_Addr addr_lower_bound, addr_upper_bound;
+#ifdef			__LOAD_BACK_TO_BACK__
+	addr_lower_bound = SEGMENT_SPACE_LOW(0);
+	addr_upper_bound = SEGMENT_SPACE_HIGH(THREAD_MAX_NUM - 1);
+#else
 	addr_lower_bound = SEGMENT_SPACE_LOW(thread_id);
 	addr_upper_bound = SEGMENT_SPACE_HIGH(thread_id);
-
-
-	Elf64_Ehdr e_header;
+#endif
 	
 	/* open the program */
 	int fd;
@@ -66,6 +71,7 @@ Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 	}
 
 	/* read ELF header */
+	Elf64_Ehdr e_header;
 	if (read(fd, &e_header, sizeof(Elf64_Ehdr)) == -1) {
 		perror("Error: Cannot read ELF header");
 		exit(1);
@@ -128,28 +134,24 @@ int my_execve(const char *argv[], const char *envp[])
 	}
 
 
-	/* make user-defined envp */
+	/* make additional envp to interact loader with thread */
 
 	char *envp_added[8], envp_added_asciiz_space[256];
-
-	i = 0;
-	i += sprintf(envp_added[0] = (envp_added_asciiz_space + 1), "%s=%p", __CALAB_LOADER__ENVVARNAME__CALL, (void *)loader_call);
-	envp_added[1] = NULL;
+	make_additional_envp(envp_added, envp_added_asciiz_space);
 
 	
-	/* load threads and init ready queue */
+	/* init ready queue */
 
+#ifdef			__LOAD_BACK_TO_BACK__
+	int _ready_q_array[63 + 1];
+#else
 	int _ready_q_array[THREAD_MAX_NUM + 1];
+#endif
 	Queue ready_q = Queue__init(_ready_q_array);
-
-	Elf64_Ehdr e_header;
+	
 	for (i = 0; argv[i]; i++) {
-		e_header = load_elf_binary(i, argv[i]);
-
 		thread[i].state = THREAD_STATE_NEW;
-		thread[i].entry = e_header.e_entry;
-		thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
-		//print_stack((const char **)(sp + sizeof(int64_t)));
+		thread[i].page_total = 0;
 
 		Queue__push(&ready_q, i);
 	}
@@ -157,32 +159,41 @@ int my_execve(const char *argv[], const char *envp[])
 
 	/* run threads */
 
+	Elf64_Ehdr e_header;
 	while (!Queue__empty(&ready_q)) {
 		i = Queue__front(&ready_q, int), Queue__pop(&ready_q);
+
+		if (thread[i].state == THREAD_STATE_NEW) {
+			e_header = load_elf_binary(i, argv[i]);
+
+			thread[i].entry = e_header.e_entry;
+			thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
+			//print_stack((const char **)(sp + sizeof(int64_t)));
+		}
+
 		
-		fprintf(stderr, INV_STYLE__ ERR_STYLE__" %s the thread '%s'... \n"__ERR_STYLE, thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", argv[i]);
+		fprintf(stderr, INV_STYLE__ ERR_STYLE__" %s the thread %d (%s)... \n"__ERR_STYLE, thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", i, argv[i]);
+		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
+		
+		dispatch(i);	// context switch
+
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
 
-		run(i);
-
-		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
 
 		if (thread[i].state == THREAD_STATE_WAIT) {
 			Queue__push(&ready_q, i);
 
-			fprintf(stderr, INV_STYLE__ ERR_STYLE__" The thread '%s' waited \n"__ERR_STYLE, argv[i]);
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" The thread %d (%s) waited \n"__ERR_STYLE, i, argv[i]);
 		}
 		else {	// STATE_END
-			fprintf(stderr, INV_STYLE__ ERR_STYLE__" The thread '%s' ended with exit code %d \n"__ERR_STYLE, argv[i], thread[i].exit_code);
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" The thread %d (%s) ended with exit code %d \n"__ERR_STYLE, i, argv[i], thread[i].exit_code);
 
-			// unmap
-			/*for (Elf64_Addr addr = thread[i].page_tail; ; addr = *(Elf64_Addr *)addr) {
-				munmap((void *)addr, PAGE_SIZE);
-				if (addr == thread[i].page_head)
-					break;
-			}*/
+			unmap_thread(i);
 		}
+
+		sleep(1);
 	}
+	printf("end\n");
 
 	return 0;
 }

@@ -29,33 +29,34 @@ extern int		errno;
 /* memory layout */
 
 // adapted from linux/fs/binfmt_elf.c
-#define 		PAGE_SIZE								(size_t)(1 << 12)					// 4096 B = 4 KB
+#define			_LOG2_PAGE_SIZE							12				// 4096 B = 4 KB
+#define 		PAGE_SIZE								(unsigned long)(1 << _LOG2_PAGE_SIZE)
 #define 		PAGE_FLOOR(_addr)						((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
 #define 		PAGE_OFFSET(_addr)						((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
 #define 		PAGE_CEIL(_addr)						(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
 
 
-#define			__LOG2_THREAD_MAX_NUM					2		// This loader can load 4 programs at most.
-#define			THREAD_MAX_NUM							(1 << __LOG2_THREAD_MAX_NUM)
+#define			_LOG2_THREAD_MAX_NUM					2				// This loader can load 4 programs at most.
+#define			THREAD_MAX_NUM							(1 << _LOG2_THREAD_MAX_NUM)
 
 
 #define			THREADS_LOW								0L
 #define			THREADS_HIGH							0x40000000L
-#define			THREAD_STRIDE							((THREADS_HIGH - THREADS_LOW) >> __LOG2_THREAD_MAX_NUM)
-#define			THREAD_SPACE_LOW(_tid)					(THREADS_LOW + (_tid) * THREAD_STRIDE)
-#define			THREAD_SPACE_HIGH(_tid)					(THREADS_LOW + ((_tid) + 1) * THREAD_STRIDE)
+#define			THREADS_STRIDE							((THREADS_HIGH - THREADS_LOW) >> _LOG2_THREAD_MAX_NUM)
+#define			THREAD_SPACE_LOW(_tid)					(THREADS_LOW + (_tid) * THREADS_STRIDE)
+#define			THREAD_SPACE_HIGH(_tid)					(THREADS_LOW + ((_tid) + 1) * THREADS_STRIDE)
 
 
-#define			__STACK_SIZE_WITH_PADDING				(1L << 23)
+#define			_STACK_SIZE_WITH_PADDING				(1L << 23)		// 8 MB
 #define			PADDING									PAGE_SIZE
 
 #define			STACK_SPACE_HIGH(_tid)					(THREAD_SPACE_HIGH(_tid) - PADDING)
-#define			STACK_SPACE_LOW(_tid)					((THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING) + PADDING)
-#define			STACK_SIZE								(__STACK_SIZE_WITH_PADDING - PADDING << 1)		// 8 MB - 8 KB
+#define			STACK_SPACE_LOW(_tid)					((THREAD_SPACE_HIGH(_tid) - _STACK_SIZE_WITH_PADDING) + PADDING)
+#define			STACK_SIZE								(_STACK_SIZE_WITH_PADDING - PADDING << 1)		// 8 MB - 8 KB
 
 #define			SEGMENT_SPACE_LOW(_tid)					THREAD_SPACE_LOW(_tid)
-#define			SEGMENT_SPACE_HIGH(_tid)				(THREAD_SPACE_HIGH(_tid) - __STACK_SIZE_WITH_PADDING)
+#define			SEGMENT_SPACE_HIGH(_tid)				(THREAD_SPACE_HIGH(_tid) - _STACK_SIZE_WITH_PADDING)
 
 
 #define			PAGE_TABLE_LOW							THREADS_HIGH
@@ -63,9 +64,9 @@ extern int		errno;
 
 
 #define			P_HEADERS_LOW							PAGE_TABLE_HIGH
-#define			P_HEADERS_HIGH							(P_HEADERS_LOW + PAGE_SIZE << __LOG2_THREAD_MAX_NUM)
-#define			P_HEADER_STRIDE							((P_HEADERS_HIGH - P_HEADERS_LOW) >> __LOG2_THREAD_MAX_NUM)
-#define			P_HEADER(_tid)							(P_HEADERS_LOW + (_tid) * P_HEADER_STRIDE)
+#define			P_HEADERS_HIGH							(P_HEADERS_LOW + PAGE_SIZE << _LOG2_THREAD_MAX_NUM)
+#define			P_HEADERS_STRIDE						((P_HEADERS_HIGH - P_HEADERS_LOW) >> _LOG2_THREAD_MAX_NUM)
+#define			P_HEADER(_tid)							(P_HEADERS_LOW + (_tid) * P_HEADERS_STRIDE)
 
 
 #define			BASE_ADDR								0x50000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
@@ -82,16 +83,18 @@ extern int		errno;
 #define			THREAD_STATE_WAIT						2
 #define			THREAD_STATE_EXIT						3
 
-#define			__CALAB_LOADER__ENVVARNAME__CALL		"__CALAB_LOADER__CALL"
+#define			CALAB_LOADER__ENVVARNAME__CALL			"__CALAB_LOADER__CALL"
 
-#define			__CALAB_LOADER__CALL__exit				1
-#define			__CALAB_LOADER__CALL__yield				2
+#define			CALAB_LOADER__CALL__exit				1
+#define			CALAB_LOADER__CALL__yield				2
 
 
 typedef struct {
 	int				state;
 	jmp_buf			jmpenv;
-	Elf64_Addr		page_tail, page_head;
+
+	int				page_total;
+	unsigned long	page_head;
 
 	Elf64_Addr 		entry, sp;		// used at STATE_NEW
 	int				exit_code;		// used at STATE_EXIT
@@ -104,7 +107,7 @@ int 			current_thread_idx = -1;
 
 
 
-// interrupt service routine: call by a thread
+// interrupt service routine: call by running thread
 int loader_call(int code, ...)
 {
 	va_list ap;
@@ -112,7 +115,7 @@ int loader_call(int code, ...)
 	
 	int ret = 0;
 	switch (code) {
-		case __CALAB_LOADER__CALL__exit:
+		case CALAB_LOADER__CALL__exit:
 			thread[current_thread_idx].state = THREAD_STATE_EXIT;
 			ret = thread[current_thread_idx].exit_code = va_arg(ap, int);
 
@@ -120,10 +123,12 @@ int loader_call(int code, ...)
 				longjmp(loader_jmpenv, true);
 			break;
 
-		case __CALAB_LOADER__CALL__yield:
+		case CALAB_LOADER__CALL__yield:
+#ifndef			__LOAD_BACK_TO_BACK__
 			thread[current_thread_idx].state = THREAD_STATE_WAIT;
 			if (!setjmp(thread[current_thread_idx].jmpenv))
 				longjmp(loader_jmpenv, true);
+#endif
 			break;
 
 		default:
@@ -136,21 +141,36 @@ int loader_call(int code, ...)
 	return ret;
 }
 
-int run(int thread_id)
+// call by loader
+int dispatch(int thread_id)
 {
 	current_thread_idx = thread_id;
 
-	if (!setjmp(loader_jmpenv)) {
-		if (thread[thread_id].state == THREAD_STATE_NEW) {
-			__asm__ __volatile__ (
-				"movq $0, %%rdx\n\t"	// (%r9 = %rdx) executed at <_start>
-				"movq %0, %%rsp\n\t"
-				"jmp *%1"
-				: : "a" (thread[thread_id].sp), "b" (thread[thread_id].entry)
-			);
-		}
-		else
-			longjmp(thread[thread_id].jmpenv, 1);		// context switch
+	int state = thread[thread_id].state;
+	thread[thread_id].state = THREAD_STATE_RUN;
+
+	if (!setjmp(loader_jmpenv)) {		// context switch
+		switch (state) {
+			case THREAD_STATE_NEW:
+				__asm__ __volatile__ (
+					"movq $0, %%rdx\n\t"		// because an instruction (%r9 = %rdx) will be executed at subroutine <_start>
+					"movq %0, %%rsp\n\t"
+					"jmp *%1"
+					: : "a" (thread[thread_id].sp), "b" (thread[thread_id].entry)
+				);
+				break;
+
+			case THREAD_STATE_WAIT:
+				longjmp(thread[thread_id].jmpenv, 1);
+				break;
+
+			case THREAD_STATE_RUN:
+			case THREAD_STATE_EXIT:
+			default:
+				fprintf(stderr, "Error: Cannot dispatch thread %d which state set to invalid value: %d\n", thread_id, thread[thread_id].state);
+				exit(1);
+				break;
+		}			
 	}
 
 	current_thread_idx = -1;
@@ -158,6 +178,58 @@ int run(int thread_id)
 }
 
 
+
+/*
+void set_page_table(int thread_id, unsigned long start, unsigned long end)
+{
+	start >>= _LOG2_PAGE_SIZE, end >>= _LOG2_PAGE_SIZE;
+
+	if (!thread[thread_id].page_total)
+		thread[thread_id].page_head = start;
+
+	for (unsigned long node = start; node < end; node++) {
+		++thread[thread_id].page_total;
+
+		*(unsigned long *)(PAGE_TABLE_LOW + node) = thread[thread_id].page_head;
+		thread[thread_id].page_head = node;
+	}
+}
+
+void unmap_thread(int thread_id)
+{
+	if (!thread[thread_id].page_total)
+		return;
+
+	// free .text, .data, .bss 
+	unsigned long node = thread[thread_id].page_head;
+	do {
+		munmap((void *)(node << _LOG2_PAGE_SIZE), PAGE_SIZE);
+		node = *(unsigned long *)(PAGE_TABLE_LOW + node);
+
+		*(unsigned long *)(PAGE_TABLE_LOW + node) = 0;
+	} while (--thread[thread_id].page_total);
+
+	// free stack
+	munmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE);
+
+#ifdef			__DPAGER_C__
+	// free page header table
+	munmap((void *)P_HEADERS_LOW, P_HEADERS_STRIDE);
+	close(fd[thread_id]);
+#endif
+}
+ */
+
+
+
+void make_additional_envp(char *envp_added[], char envp_added_asciiz_space[])
+{
+	int i;
+
+	i = 0;
+	i += sprintf(envp_added[0] = (envp_added_asciiz_space + 1), "%s=%p", CALAB_LOADER__ENVVARNAME__CALL, (void *)loader_call);
+	envp_added[1] = NULL;
+}
 
 Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], const char *envp_added[], const Elf64_Ehdr *ep)
 {
@@ -167,7 +239,11 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	/* allocate new stack space */
 
 	fprintf(stderr, ERR_STYLE__"Mapping: user stack -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, STACK_SPACE_LOW(thread_id), STACK_SIZE);
+#ifdef			__LOAD_BACK_TO_BACK__
+	if (mmap((void *)STACK_SPACE_LOW(THREAD_MAX_NUM - 1), STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+#else
 	if (mmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+#endif
 		perror("Error: Cannot allocate memory for user stack");
 		exit(1);
 	}
@@ -211,7 +287,11 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	Elf64_auxv_t *new_auxv;
 	char *new_argv_asciiz_space, *new_envp_asciiz_space;
 
+#ifdef			__LOAD_BACK_TO_BACK__
+	sp = STACK_SPACE_HIGH(THREAD_MAX_NUM - 1);				// bottom of stack
+#else
 	sp = STACK_SPACE_HIGH(thread_id);						// bottom of stack
+#endif
 
 	sp -= sizeof(int64_t);									// end marker
 
