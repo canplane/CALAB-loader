@@ -8,6 +8,11 @@
 
 
 
+#define			ERR_STYLE__								"\x1b[2m"
+#define			__ERR_STYLE								"\x1b[0m"
+
+
+
 #define			__CALAB_LOADER__ENVVARNAME__CALL		"__CALAB_LOADER__CALL"
 
 #define			__CALAB_LOADER__CALL__exit				1
@@ -23,11 +28,11 @@ int (*__get_loader_call())(int, ...)
 	char *ISR_addr_str;
 
 	if ((ISR_addr_str = getenv(__CALAB_LOADER__ENVVARNAME__CALL)) == NULL) {
-		fprintf(stderr, "Warning: The program is not executed on the loader program.\n");
+		fprintf(stderr, ERR_STYLE__"Warning: The program is not executed on the loader program.\n"__ERR_STYLE);
 		return NULL;
 	}
 	if (sscanf(ISR_addr_str, "%p", &ISR_addr) != 1) {
-		fprintf(stderr, "Warning: Invalid environment variable: \"%s=%s\"\n", __CALAB_LOADER__ENVVARNAME__CALL, ISR_addr_str);
+		fprintf(stderr, ERR_STYLE__"Warning: Invalid environment variable: \"%s=%s\"\n"__ERR_STYLE, __CALAB_LOADER__ENVVARNAME__CALL, ISR_addr_str);
 		return NULL;
 	}
 	return (int (*)(int, ...))ISR_addr;

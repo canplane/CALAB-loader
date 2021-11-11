@@ -26,7 +26,7 @@ void map_segment(int thread_id, const Elf64_Phdr *pp, int fd) {
 	page_start = PAGE_FLOOR(segment_start), page_end = PAGE_CEIL(bss_start);
 	offset = PAGE_FLOOR(pp->p_offset);
 
-	fprintf(stderr, "Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n", offset, page_start, page_end - page_start);
+	fprintf(stderr, ERR_STYLE__"Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, offset, page_start, page_end - page_start);
 	if (mmap((void *)page_start, page_end - page_start, elf_prot, elf_flags, fd, offset) == MAP_FAILED)
 		goto mmap_err;
 	
@@ -37,7 +37,7 @@ void map_segment(int thread_id, const Elf64_Phdr *pp, int fd) {
 		
 		page_start = PAGE_CEIL(bss_start), page_end = PAGE_CEIL(bss_end);
 		if (page_start < page_end) {
-			fprintf(stderr, "Mapping: .bss -> (memory address = %#lx, size = %#lx)\n", page_start, page_end - page_start);
+			fprintf(stderr, ERR_STYLE__"Mapping: .bss -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, page_start, page_end - page_start);
 			if (mmap((void *)page_start, page_end - page_start, elf_prot, elf_flags | MAP_ANONYMOUS, -1, 0) == MAP_FAILED)
 				goto mmap_err;
 		}
@@ -160,20 +160,20 @@ int my_execve(const char *argv[], const char *envp[])
 	while (!Queue__empty(&ready_q)) {
 		i = Queue__front(&ready_q, int), Queue__pop(&ready_q);
 		
-		fprintf(stderr, "%s the thread '%s'...\n", thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", argv[i]);
-		fprintf(stderr, "--------\n");
+		fprintf(stderr, INV_STYLE__ ERR_STYLE__" %s the thread '%s'... \n"__ERR_STYLE, thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", argv[i]);
+		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
 
 		run(i);
 
-		fprintf(stderr, "--------\n");
+		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
 
 		if (thread[i].state == THREAD_STATE_WAIT) {
 			Queue__push(&ready_q, i);
 
-			fprintf(stderr, "The thread '%s' waited\n", argv[i]);
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" The thread '%s' waited \n"__ERR_STYLE, argv[i]);
 		}
 		else {	// STATE_END
-			fprintf(stderr, "The thread '%s' ended with exit code %d\n", argv[i], thread[i].exit_code);
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" The thread '%s' ended with exit code %d \n"__ERR_STYLE, argv[i], thread[i].exit_code);
 
 			// unmap
 			/*for (Elf64_Addr addr = thread[i].page_tail; ; addr = *(Elf64_Addr *)addr) {

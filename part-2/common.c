@@ -20,6 +20,11 @@ extern int		errno;
 #include		"queue.c"
 
 
+#define			ERR_STYLE__								"\x1b[2m"
+#define			INV_STYLE__								"\x1b[7m"
+#define			__ERR_STYLE								"\x1b[0m"
+
+
 
 /* memory layout */
 
@@ -122,7 +127,7 @@ int loader_call(int code, ...)
 			break;
 
 		default:
-			fprintf(stderr, "Warning: Invalid call code: %d\n", code);
+			fprintf(stderr, ERR_STYLE__"Warning: Invalid call code: %d\n"__ERR_STYLE, code);
 			ret = -1;
 			break;
 	}
@@ -161,7 +166,7 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 	/* allocate new stack space */
 
-	fprintf(stderr, "Mapping: user stack -> (memory address = %#lx, size = %#lx)\n", STACK_SPACE_LOW(thread_id), STACK_SIZE);
+	fprintf(stderr, ERR_STYLE__"Mapping: user stack -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, STACK_SPACE_LOW(thread_id), STACK_SIZE);
 	if (mmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Cannot allocate memory for user stack");
 		exit(1);
@@ -242,15 +247,15 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 		switch (auxv[i].a_type) {
 			case AT_PHNUM:			// 5: Number of program headers
 				new_auxv[i].a_un.a_val = ep->e_phnum;
-				//fprintf(stderr, "Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				//fprintf(stderr, ERR_STYLE__"Auxiliary vector modified: AT_PHNUM: %ld -> %ld\n"__ERR_STYLE, auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 			case AT_BASE:			// 7: Base address of interpreter
 				new_auxv[i].a_un.a_val = 0;
-				//fprintf(stderr, "Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				//fprintf(stderr, ERR_STYLE__"Auxiliary vector modified: AT_BASE: %#lx -> %#lx\n"__ERR_STYLE, auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 			case AT_ENTRY:			// 9: Entry point of program
 				new_auxv[i].a_un.a_val = ep->e_entry;
-				//fprintf(stderr, "Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n", auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
+				//fprintf(stderr, ERR_STYLE__"Auxiliary vector modified: AT_ENTRY: %#lx -> %#lx\n"__ERR_STYLE, auxv[i].a_un.a_val, new_auxv[i].a_un.a_val);
 				break;
 		}
 	}
