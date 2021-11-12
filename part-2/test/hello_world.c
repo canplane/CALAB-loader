@@ -1,11 +1,11 @@
+#include "branch.c"
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-void return_to_loader (...)
-{
-}
 
 int main(int argc, char **argv)
 {
@@ -17,5 +17,5 @@ int main(int argc, char **argv)
   close(fd);
   printf("%s", data);
 
-  return_to_loader ();
+  return_to_loader (67);
 }

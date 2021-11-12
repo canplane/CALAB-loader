@@ -1,6 +1,7 @@
 #ifndef			__APAGER_C__
 #define			__APAGER_C__
 
+#define			__LOAD_BACK_TO_BACK__
 
 #include 		"./common.c"
 
@@ -51,8 +52,8 @@ mmap_err:
 Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 {
 	Elf64_Addr addr_lower_bound, addr_upper_bound;
-	addr_lower_bound = SEGMENT_SPACE_LOW(thread_id);
-	addr_upper_bound = SEGMENT_SPACE_HIGH(thread_id);
+	addr_lower_bound = SEGMENT_SPACE_LOW;
+	addr_upper_bound = SEGMENT_SPACE_HIGH;
 
 	/* open the program */
 
@@ -88,16 +89,16 @@ Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 	/* allocate memory to program header table */
 	
 	Elf64_Phdr *p_header_table;
-	if (e_header.e_phnum * sizeof(Elf64_Phdr) > P_HEADERS_STRIDE) {
-		fprintf(stderr, "Error: The size of program header table is too large to store into memory. Cannot exceed %#lx.\n", P_HEADERS_STRIDE);
+	if (e_header.e_phnum * sizeof(Elf64_Phdr) > P_HEADER_TABLE_MAXSZ) {
+		fprintf(stderr, "Error: The size of program header table is too large to store into memory. Cannot exceed %#lx.\n", P_HEADER_TABLE_MAXSZ);
 		exit(1);
 	}
-	fprintf(stderr, ERR_STYLE__"Thread %d: Mapping: Program header table -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER(thread_id), PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)));
-	if (mmap((void *)P_HEADER(thread_id), PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+	fprintf(stderr, ERR_STYLE__"Thread %d: Mapping: Program header table -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE_LOW, PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)));
+	if (mmap((void *)P_HEADER_TABLE_LOW, PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Cannot allocate program header table into memory");
 		exit(1);
 	}
-	p_header_table = (Elf64_Phdr *)P_HEADER(thread_id);
+	p_header_table = (Elf64_Phdr *)P_HEADER_TABLE_LOW;
 	
 
 	/* read program header table */
@@ -123,8 +124,8 @@ Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 		}
 	}
 
-	thread[thread_id].fd = fd;
-	thread[thread_id].p_header_table = p_header_table, thread[thread_id].p_header_num = e_header.e_phnum;
+	thread.fd = fd;
+	thread.p_header_table = p_header_table, thread.p_header_num = e_header.e_phnum;
 	
 	return e_header;
 }
@@ -140,51 +141,32 @@ int my_execve(const char *argv[], const char *envp[])
 	char *envp_added[8], envp_added_asciiz_space[256];
 	make_additional_envp(envp_added, envp_added_asciiz_space);
 
-	
-	/* init ready queue */
-	
-	int _ready_q_array[THREAD_MAX_NUM + 1];
-	Queue ready_q = Queue__init(_ready_q_array);
-	
-	for (i = 0; argv[i]; i++) {
-		thread[i].state = THREAD_STATE_NEW;
-		Queue__push(&ready_q, i);
-	}
-
 
 	/* run threads */
 
 	Elf64_Ehdr e_header;
-	while (!Queue__empty(&ready_q)) {
-		i = Queue__front(&ready_q, int), Queue__pop(&ready_q);
+	for (int i = 0; argv[i]; i++) {
+		thread.state = THREAD_STATE_NEW;
 
-		if (thread[i].state == THREAD_STATE_NEW) {
-			e_header = load_elf_binary(i, argv[i]);
 
-			thread[i].entry = e_header.e_entry;
-			thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
-			//print_stack((const char **)(sp + sizeof(int64_t)));
-		}
+		e_header = load_elf_binary(i, argv[i]);
 
-		
-		fprintf(stderr, INV_STYLE__ ERR_STYLE__" %s thread %d (%s)... \n"__ERR_STYLE, thread[i].state == THREAD_STATE_NEW ? "Executing" : "Continuing", i, argv[i]);
+		thread.entry = e_header.e_entry;
+		thread.sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
+		//print_stack((const char **)(thread.sp + sizeof(unsigned long)));
+
+		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (Stack pointer = %#lx, Entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread.sp, thread.entry);
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
 		
+		//>>>>
 		dispatch(i);	// context switch
+		//<<<<
 
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
-
-
-		if (thread[i].state == THREAD_STATE_WAIT) {
-			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d (%s) waited \n"__ERR_STYLE, i, argv[i]);
-			Queue__push(&ready_q, i);
-		}
-		else {	// STATE_END
-			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d (%s) ended with exit code %d \n"__ERR_STYLE, i, argv[i], thread[i].exit_code);
-			unmap_thread(i);
-		}
+		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d ('%s') ended with exit code %d \n"__ERR_STYLE, i, argv[i], thread.exit_code);
+		unmap_thread(i);
 	}
-	fprintf(stderr, ERR_STYLE__"All threads are successfully terminated\n"__ERR_STYLE);
+	fprintf(stderr,  INV_STYLE__ ERR_STYLE__" All threads are successfully terminated \n"__ERR_STYLE);
 
 	return 0;
 }

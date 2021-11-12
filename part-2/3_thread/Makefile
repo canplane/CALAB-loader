@@ -1,13 +1,20 @@
 all: apager test
 
 apager: apager.c common.c queue.c
-	gcc -static -Wl,-Ttext-segment=0x50400000 apager.c -o apager
+	gcc -static -Wl,-Ttext-segment=0x60000000 apager.c -o apager
 
 test: branch.c test.c
-	gcc -static -Wl,-Ttext-segment=0x00400000 test.c -o test1
-	gcc -static -Wl,-Ttext-segment=0x10400000 test.c -o test2
-	gcc -static -Wl,-Ttext-segment=0x20400000 test.c -o test3
-	gcc -static -Wl,-Ttext-segment=0x30400000 test.c -o test4
+	gcc -static -Wl,-Ttext-segment=0x10000000 test.c -o test1
+	gcc -static -Wl,-Ttext-segment=0x18000000 test.c -o test2
+	gcc -static -Wl,-Ttext-segment=0x20000000 test.c -o test3
+	gcc -static -Wl,-Ttext-segment=0x28000000 test.c -o test4
+	gcc -static -Wl,-Ttext-segment=0x30000000 test.c -o test5
+	gcc -static -Wl,-Ttext-segment=0x38000000 test.c -o test6
+	gcc -static -Wl,-Ttext-segment=0x40000000 test.c -o test7
+	gcc -static -Wl,-Ttext-segment=0x48000000 test.c -o test8
+
+run:
+	./apager test1 test2 test3 test4 test5 test6 test7 test8
 
 clean:
 	rm -f apager
@@ -15,3 +22,7 @@ clean:
 	rm -f test2
 	rm -f test3
 	rm -f test4
+	rm -f test5
+	rm -f test6
+	rm -f test7
+	rm -f test8

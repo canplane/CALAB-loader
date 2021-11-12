@@ -1,3 +1,7 @@
+#include "branch.c"
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -8,10 +12,6 @@
 #define ARRAY_SIZE 1000000
 int a[ARRAY_SIZE];
 int b[ARRAY_SIZE];
-
-void return_to_loader(...)
-{
-}
 
 int main()
 {
@@ -40,5 +40,5 @@ int main()
   close(fd);
   printf("%s", data);
 
-  return_to_loader(...);
+  return_to_loader(27);
 }

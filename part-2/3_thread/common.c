@@ -36,12 +36,12 @@ extern int		errno;
 #define 		PAGE_CEIL(_addr)						(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
 
-#define			_LOG2_THREAD_MAX_NUM					2				// This loader can load 4 programs at most.
+#define			_LOG2_THREAD_MAX_NUM					3				// this loader can load at most 8 programs
 #define			THREAD_MAX_NUM							(1 << _LOG2_THREAD_MAX_NUM)
 
 
-#define			THREADS_LOW								0x00000000L
-#define			THREADS_HIGH							0x40000000L
+#define			THREADS_LOW								0x10000000L
+#define			THREADS_HIGH							0x50000000L
 #define			_THREADS_STRIDE							((THREADS_HIGH - THREADS_LOW) >> _LOG2_THREAD_MAX_NUM)
 #define			THREAD_SPACE_LOW(_tid)					(THREADS_LOW + (_tid) * _THREADS_STRIDE)
 #define			THREAD_SPACE_HIGH(_tid)					(THREADS_LOW + ((_tid) + 1) * _THREADS_STRIDE)
@@ -58,13 +58,13 @@ extern int		errno;
 #define			SEGMENT_SPACE_HIGH(_tid)				(THREAD_SPACE_HIGH(_tid) - _STACK_SIZE_WITH_PADDING)
 
 
-#define			P_HEADERS_LOW							THREADS_HIGH
-#define			P_HEADERS_HIGH							(P_HEADERS_LOW + (PAGE_SIZE << _LOG2_THREAD_MAX_NUM))
-#define			P_HEADERS_STRIDE						((P_HEADERS_HIGH - P_HEADERS_LOW) >> _LOG2_THREAD_MAX_NUM)
-#define			P_HEADER(_tid)							(P_HEADERS_LOW + (_tid) * P_HEADERS_STRIDE)
+#define			P_HEADER_TABLES_LOW						THREADS_HIGH
+#define			P_HEADER_TABLE_MAXSZ					PAGE_SIZE
+#define			P_HEADER_TABLES_HIGH					(P_HEADER_TABLES_LOW + (P_HEADER_TABLE_MAXSZ << _LOG2_THREAD_MAX_NUM))
+#define			P_HEADER_TABLE(_tid)					(P_HEADER_TABLES_LOW + (_tid) * P_HEADER_TABLE_MAXSZ)
 
 
-#define			BASE_ADDR								0x50000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
+#define			BASE_ADDR								0x60000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
 
 
 
@@ -200,8 +200,8 @@ void unmap_thread(int thread_id)
 	}
 
 	// free page header table
-	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Program header table (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr)));
-	if (munmap((void *)P_HEADER(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr))) == -1) {
+	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Program header table (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr)));
+	if (munmap((void *)P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr))) == -1) {
 		perror("Error: Cannot unmap memory for program header table");
 		exit(1);
 	}
@@ -352,7 +352,7 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 
 /* for debugging */
-
+/*
 void print_e_header(const Elf64_Ehdr *ep)
 {
 	fprintf(stderr, "{\n");
@@ -482,7 +482,7 @@ void print_stack(const char **argv)
 	}
 	printf("auxc = %d\n", auxc);
 }
-
+ */
 
 
 #endif

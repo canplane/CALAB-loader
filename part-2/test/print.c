@@ -1,12 +1,12 @@
+#include "branch.c"
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-void return_to_loader(...)
-{
-}
 
 int main(int argc, char **argv, char** envp)
 {
@@ -49,5 +49,5 @@ int main(int argc, char **argv, char** envp)
   close(fd);
   printf("%s", data);
 
-  return_to_loader(...);
+  return_to_loader(53);
 }

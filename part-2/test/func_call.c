@@ -1,8 +1,8 @@
-#include <stdio.h>
+#include "branch.c"
 
-void return_to_loader (...)
-{
-}
+
+
+#include <stdio.h>
 
 int foobar (int a, int b)
 {
@@ -14,5 +14,5 @@ int main(int argc, char **argv)
 {
     foobar (3, 4);
 
-    return_to_loader (...);
+    return_to_loader (43);
 }

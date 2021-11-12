@@ -1,11 +1,11 @@
+#include "branch.c"
+
+
+
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
-
-void return_to_loader(...)
-{
-}
 
 int main()
 {
@@ -32,5 +32,5 @@ int main()
     close(fd2);
     printf("%s", data2);
 
-    return_to_loader(...);
+    return_to_loader(80);
 }
