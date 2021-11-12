@@ -1,3 +1,13 @@
+/* 
+ * debug.c
+ * ----------------
+ * CALAB Master Programming Project
+ * 
+ * Sanghoon Lee (canplane@gmail.com)
+ * 12 November 2021
+ */
+
+
 #ifndef			__DEBUG_C__
 #define			__DEBUG_C__
 

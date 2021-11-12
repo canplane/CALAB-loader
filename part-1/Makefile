@@ -6,12 +6,16 @@ apager: apager.c common.c debug.c
 dpager: dpager.c common.c debug.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 dpager.c -o dpager
 
-test: test_1.c test_2.c
-	gcc -static test_1.c -o test_1
-	gcc -static test_2.c -o test_2
+test: example/my_test.c example/my_test.c
+	gcc -static example/my_test.c -o example/my_test
+
+run_apager:
+	./apager example/my_test
+
+run_dpager:
+	./dpager example/my_test
 
 clean:
 	rm -f apager
 	rm -f dpager
-	rm -f test_1
-	rm -f test_2
+	rm -f example/my_test

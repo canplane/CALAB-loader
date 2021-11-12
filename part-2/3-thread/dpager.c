@@ -1,3 +1,14 @@
+/* 
+ * /part-2/3-thread/common.c
+ * ----------------
+ * CALAB Master Programming Project - (Part 2) Advanced user-level loader
+ * User-level threading (demand loading)
+ * 
+ * Sanghoon Lee (canplane@gmail.com)
+ * 12 November 2021
+ */
+
+
 #ifndef			__DPAGER_C__
 #define			__DPAGER_C__
 

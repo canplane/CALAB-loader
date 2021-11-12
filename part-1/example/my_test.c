@@ -1,8 +1,3 @@
-#include "../branch.c"
-
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -13,8 +8,6 @@ char *s = "foo";
 int main()
 {
     printf("Hello World!\n");
-
-    yield();                    // yield
     
     char *p = malloc(0x100000);
     printf("malloc(0x100000): %p\n", p);
@@ -22,8 +15,9 @@ int main()
     /*
     char *q = NULL;
     printf("Can I assign a value to nullptr?\n");
-    *q = 'a';
+    *q = 'a';   // segmentation fault
+    printf("Success!\n");
      */
-
-    return_to_loader(254);      // exit: $ echo $? -> 254
+    
+    return 254;
 }

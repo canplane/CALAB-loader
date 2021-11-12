@@ -1,3 +1,15 @@
+/* 
+ * /part-2/2-back_to_back/common.c
+ * ----------------
+ * CALAB Master Programming Project - (Part 2) Advanced user-level loader
+ * Back-to-back loading
+ * 
+ * Sanghoon Lee (canplane@gmail.com)
+ * 12 November 2021
+ */
+
+
+
 #ifndef			__COMMON_C__
 #define			__COMMON_C__
 
@@ -19,7 +31,7 @@
 extern int		errno;
 
 
-#include		"debug.c"
+#include		"../../etc/debug.c"
 
 
 

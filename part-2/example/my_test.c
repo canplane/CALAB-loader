@@ -1,4 +1,4 @@
-#include "../branch.c"
+#include "../interrupt.c"
 
 
 
@@ -22,8 +22,9 @@ int main()
     /*
     char *q = NULL;
     printf("Can I assign a value to nullptr?\n");
-    *q = 'a';
+    *q = 'a';   // segmentation fault
+    printf("Success!\n");
      */
-
-    return_to_loader(254);      // exit: $ echo $? -> 254
+    
+    return_to_loader(254);      // return 254;
 }

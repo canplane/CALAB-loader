@@ -1,3 +1,13 @@
+/* 
+ * /part-1/common.c
+ * ----------------
+ * CALAB Master Programming Project - (Part 1) User-level loader
+ * 
+ * Sanghoon Lee (canplane@gmail.com)
+ * 12 November 2021
+ */
+
+
 #ifndef			__COMMON_C__
 #define			__COMMON_C__
 
@@ -18,7 +28,7 @@
 extern int 		errno;
 
 
-#include		"debug.c"
+#include		"../etc/debug.c"
 
 
 
@@ -283,9 +293,10 @@ void start(Elf64_Addr entry, Elf64_Addr sp)
 	);
 
     /*
-
-...8:	argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
-...0:	argc					[]			[]			[]
+		<_start>
+		
+		argv[0] ->	argv[0]	-> 	argv[0]	->	argv[0]	-> 	argv[0]
+		argc					[]			[]			[]
 											%rax		%rax
 														&(%rax)
 		// %r9 = %rdx
@@ -298,7 +309,6 @@ void start(Elf64_Addr entry, Elf64_Addr sp)
 		_libc_start_main(
 			%rdi=main, %rsi=argc, %rdx=argv, %rcx=_libc_csu_init, %r8=_libc_csu_fini, %r9
 		)
-    
 	 */
 }
 

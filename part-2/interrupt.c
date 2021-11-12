@@ -1,5 +1,16 @@
-#ifndef			__BRANCH_C__
-#define			__BRANCH_C__
+/* 
+ * /part-2/interrupt.c
+ * ----------------
+ * CALAB Master Programming Project - (Part 2) Advanced user-level loader
+ * Returning to the program loader
+ * 
+ * Sanghoon Lee (canplane@gmail.com)
+ * 12 November 2021
+ */
+
+
+#ifndef			__INTERRUPT_C__
+#define			__INTERRUPT_C__
 
 
 

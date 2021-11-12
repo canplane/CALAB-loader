@@ -1,3 +1,13 @@
+/* 
+ * queue.c
+ * ----------------
+ * Generic Queue Structure
+ * 
+ * Sanghoon Lee (canplane@gmail.com)
+ * 12 November 2021
+ */
+
+
 #ifndef			__QUEUE_C__
 #define			__QUEUE_C__
 
@@ -20,6 +30,7 @@ typedef struct {
 } Queue;
 
 
+// set array to queue and return queue handler
 #define 		Queue__init(array)						__Queue__init((void *)(array), sizeof(array), sizeof(*array))
 Queue __Queue__init(void *array, int container_size, int element_size)
 {
