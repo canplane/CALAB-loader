@@ -3,22 +3,28 @@
 
 
 
+
 #include		<stdio.h>
 #include 		<stdlib.h>
 
 
 
-#define			ERR_STYLE__								"\x1b[2m"
-#define			__ERR_STYLE								"\x1b[0m"
+
+/* font style */
+
+#define			ERR_STYLE__								"\x1b[2m\x1b[3m"	// bold, italic
+#define			INV_STYLE__								"\x1b[7m"			// inverse
+#define			__ERR_STYLE								"\x1b[0m"			// reset to normal
 
 
+
+
+/* loader call */
 
 #define			CALAB_LOADER__ENVVARNAME__CALL			"__CALAB_LOADER__CALL"
 
 #define			CALAB_LOADER__CALL__exit				1
 #define			CALAB_LOADER__CALL__yield				2
-
-
 
 
 // get ISR in loader
@@ -54,6 +60,7 @@ int yield()
 	
 	return loader_call(CALAB_LOADER__CALL__yield);
 }
+
 
 
 

@@ -3,8 +3,10 @@
 
 
 
+
 #include 		<stdbool.h>
 #include 		<string.h>
+
 
 
 
@@ -80,6 +82,7 @@ int Queue__size(const Queue *q)
 {
 	return q->_size;
 }
+
 
 
 

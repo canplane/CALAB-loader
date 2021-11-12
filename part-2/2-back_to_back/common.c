@@ -3,6 +3,7 @@
 
 
 
+
 #include 		<stdio.h>
 #include 		<stdlib.h>
 #include 		<string.h>
@@ -18,9 +19,14 @@
 extern int		errno;
 
 
-#define			ERR_STYLE__								"\x1b[2m"
-#define			INV_STYLE__								"\x1b[7m"
-#define			__ERR_STYLE								"\x1b[0m"
+
+
+/* font style */
+
+#define			ERR_STYLE__								"\x1b[2m\x1b[3m"	// bold, italic
+#define			INV_STYLE__								"\x1b[7m"			// inverse
+#define			__ERR_STYLE								"\x1b[0m"			// reset to normal
+
 
 
 
@@ -58,6 +64,7 @@ extern int		errno;
 
 
 
+
 /* thread */
 
 #include		<stdarg.h>
@@ -67,11 +74,6 @@ extern int		errno;
 #define			THREAD_STATE_RUN						1
 #define			THREAD_STATE_WAIT						2
 #define			THREAD_STATE_EXIT						3
-
-#define			CALAB_LOADER__ENVVARNAME__CALL			"__CALAB_LOADER__CALL"
-
-#define			CALAB_LOADER__CALL__exit				1
-#define			CALAB_LOADER__CALL__yield				2
 
 
 typedef struct {
@@ -89,36 +91,6 @@ Thread 			thread;
 
 jmp_buf			loader_jmpenv;
 
-
-
-// interrupt service routine: call by running thread
-int loader_call(int code, ...)
-{
-	va_list ap;
-	va_start(ap, code);
-	
-	int ret = 0;
-	switch (code) {
-		case CALAB_LOADER__CALL__exit:
-			thread.state = THREAD_STATE_EXIT;
-			ret = thread.exit_code = va_arg(ap, int);
-
-			if (!setjmp(thread.jmpenv))
-				longjmp(loader_jmpenv, true);
-			break;
-
-		case CALAB_LOADER__CALL__yield:
-			break;
-
-		default:
-			fprintf(stderr, ERR_STYLE__"Warning: Invalid call code: %d\n"__ERR_STYLE, code);
-			ret = -1;
-			break;
-	}
-
-	va_end(ap);
-	return ret;
-}
 
 // call by loader
 int dispatch(int thread_id)
@@ -152,8 +124,6 @@ int dispatch(int thread_id)
 
 	return 0;
 }
-
-
 
 void unmap_thread(int thread_id)
 {
@@ -195,6 +165,49 @@ void unmap_thread(int thread_id)
 }
 
 
+
+
+/* loader call */
+
+#define			CALAB_LOADER__ENVVARNAME__CALL			"__CALAB_LOADER__CALL"
+
+#define			CALAB_LOADER__CALL__exit				1
+#define			CALAB_LOADER__CALL__yield				2
+
+
+// interrupt service routine: call by running thread
+int loader_call(int code, ...)
+{
+	va_list ap;
+	va_start(ap, code);
+	
+	int ret = 0;
+	switch (code) {
+		case CALAB_LOADER__CALL__exit:
+			thread.state = THREAD_STATE_EXIT;
+			ret = thread.exit_code = va_arg(ap, int);
+
+			if (!setjmp(thread.jmpenv))
+				longjmp(loader_jmpenv, true);
+			break;
+
+		case CALAB_LOADER__CALL__yield:
+			break;
+
+		default:
+			fprintf(stderr, ERR_STYLE__"Warning: Invalid call code: %d\n"__ERR_STYLE, code);
+			ret = -1;
+			break;
+	}
+
+	va_end(ap);
+	return ret;
+}
+
+
+
+
+/* stack */
 
 void make_additional_envp(char *envp_added[], char envp_added_asciiz_space[])
 {
@@ -332,6 +345,7 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 
 
+
 /* for debugging */
 /*
 void print_e_header(const Elf64_Ehdr *ep)
@@ -464,6 +478,7 @@ void print_stack(const char **argv)
 	printf("auxc = %d\n", auxc);
 }
  */
+
 
 
 #endif

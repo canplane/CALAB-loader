@@ -11,7 +11,7 @@ test: branch.c example/my_test.c example/bss.c example/func_call.c example/hello
 	gcc -static example/print.c -o example/print
 	gcc -static example/test.c -o example/test
 
-run:
+run_apager:
 	./apager example/my_test example/bss example/func_call example/hello_world example/print example/test
 
 clean:

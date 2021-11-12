@@ -1,7 +1,11 @@
 #ifndef			__APAGER_C__
 #define			__APAGER_C__
 
+
+
+
 #include 		"./common.c"
+
 
 
 
@@ -130,6 +134,7 @@ Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 
 
 
+
 int my_execve(const char *argv[], const char *envp[])
 {
 	int i;
@@ -171,7 +176,9 @@ int my_execve(const char *argv[], const char *envp[])
 
 
 
+
 #endif
+
 
 
 

@@ -13,7 +13,7 @@ test: branch.c example/my_test.c
 	gcc -static -Wl,-Ttext-segment=0x40000000 example/my_test.c -o test7
 	gcc -static -Wl,-Ttext-segment=0x48000000 example/my_test.c -o test8
 
-run:
+run_apager:
 	./apager test1 test2 test3 test4 test5 test6 test7 test8
 
 clean:
