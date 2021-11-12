@@ -154,54 +154,11 @@ int dispatch(int thread_id)
 	return 0;
 }
 
-void unmap_thread(int thread_id)
-{
-	Thread *th = &thread[thread_id];
 
-	// free .text, .data, .bss
-	Elf64_Addr segment_start, bss_end;
-	for (int i = 0; i < th->p_header_num; i++) {
-		if (th->p_header_table[i].p_type != PT_LOAD)
-            continue;
-
-		segment_start = PAGE_FLOOR(th->p_header_table[i].p_vaddr);
-		bss_end = PAGE_CEIL(th->p_header_table[i].p_vaddr + th->p_header_table[i].p_memsz);
-
-		fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Segments (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, segment_start, bss_end - segment_start);
-		if (munmap((void *)segment_start, bss_end - segment_start) == -1) {
-			perror("Error: Cannot unmap memory for segments");
-			exit(1);
-		}
-	}
-
-	// free stack
-	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Stack (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, STACK_SPACE_LOW(thread_id), STACK_SIZE);
-	if (munmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE) == -1) {
-		perror("Error: Cannot unmap memory for stack");
-		exit(1);
-	}
-
-	// free page header table
-	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Program header table (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr)));
-	if (munmap((void *)P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr))) == -1) {
-		perror("Error: Cannot unmap memory for program header table");
-		exit(1);
-	}
-	
-	// close file
-	if (close(th->fd) == -1) {
-		perror("Error: Cannot close file");
-		exit(1);
-	}
-}
-
-
-
-
-/* loader call */
-
+// the name of custom environment variable whose value is set to the address of function 'loader_ISR()'
 #define			CALAB_LOADER__ENVVARNAME__CALL			"__CALAB_LOADER__CALL"
 
+// loader call code
 #define			CALAB_LOADER__CALL__exit				1
 #define			CALAB_LOADER__CALL__yield				2
 
@@ -462,6 +419,52 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 	//print_stack((const char **)(sp + sizeof(int64_t)));
 	return sp;
+}
+
+
+
+
+/* unmap memory */
+
+void unmap_thread(int thread_id)
+{
+	Thread *th = &thread[thread_id];
+
+	// free .text, .data, .bss
+	Elf64_Addr segment_start, bss_end;
+	for (int i = 0; i < th->p_header_num; i++) {
+		if (th->p_header_table[i].p_type != PT_LOAD)
+            continue;
+
+		segment_start = PAGE_FLOOR(th->p_header_table[i].p_vaddr);
+		bss_end = PAGE_CEIL(th->p_header_table[i].p_vaddr + th->p_header_table[i].p_memsz);
+
+		fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Segments (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, segment_start, bss_end - segment_start);
+		if (munmap((void *)segment_start, bss_end - segment_start) == -1) {
+			perror("Error: Cannot unmap memory for segments");
+			exit(1);
+		}
+	}
+
+	// free stack
+	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Stack (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, STACK_SPACE_LOW(thread_id), STACK_SIZE);
+	if (munmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE) == -1) {
+		perror("Error: Cannot unmap memory for stack");
+		exit(1);
+	}
+
+	// free page header table
+	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Program header table (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr)));
+	if (munmap((void *)P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr))) == -1) {
+		perror("Error: Cannot unmap memory for program header table");
+		exit(1);
+	}
+	
+	// close file
+	if (close(th->fd) == -1) {
+		perror("Error: Cannot close file");
+		exit(1);
+	}
 }
 
 
