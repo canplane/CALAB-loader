@@ -1,9 +1,11 @@
-#ifndef		__APAGER_C__
-#define		__APAGER_C__
+#ifndef			__APAGER_C__
+#define			__APAGER_C__
 
 
 
-#include 	"./common.c"
+
+#include 		"./common.c"
+
 
 
 
@@ -26,7 +28,7 @@ void map_segment(const Elf64_Phdr *pp, int fd) {
 	page_start = PAGE_FLOOR(segment_start), page_end = PAGE_CEIL(bss_start);
 	offset = PAGE_FLOOR(pp->p_offset);
 
-	fprintf(stderr, "Mapping: (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n", offset, page_start, page_end - page_start);
+	fprintf(stderr, ERR_STYLE__"Mapping: Segments (file offset = %#lx) -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, offset, page_start, page_end - page_start);
 	if (mmap((void *)page_start, page_end - page_start, elf_prot, elf_flags, fd, offset) == MAP_FAILED)
 		goto mmap_err;
 	
@@ -37,7 +39,7 @@ void map_segment(const Elf64_Phdr *pp, int fd) {
 		
 		page_start = PAGE_CEIL(bss_start), page_end = PAGE_CEIL(bss_end);
 		if (page_start < page_end) {
-			fprintf(stderr, "Mapping: .bss -> (memory address = %#lx, size = %#lx)\n", page_start, page_end - page_start);
+			fprintf(stderr, ERR_STYLE__"Mapping: Segments (.bss) -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, page_start, page_end - page_start);
 			if (mmap((void *)page_start, page_end - page_start, elf_prot, elf_flags | MAP_ANONYMOUS, -1, 0) == MAP_FAILED)
 				goto mmap_err;
 		}
@@ -49,64 +51,16 @@ mmap_err:
 	exit(1);
 }
 
-Elf64_Ehdr load_elf_binary(const char *path)
+Elf64_Addr load_segments()
 {
-	Elf64_Ehdr e_header;
-	
-	/* open the program */
-	int fd;
-	if ((fd = open(path, O_RDONLY)) == -1) {
-        fprintf(stderr, "Error: Cannot open the program '%s': %s\n", path, strerror(errno));
-		exit(1);
-    }
-
-	/* read ELF header */
-	if (read(fd, &e_header, sizeof(Elf64_Ehdr)) == -1) {
-		perror("Error: Cannot read ELF header");
-		exit(1);
-	}
-    //fprintf(stderr, "ELF header "), print_e_header(&e_header);
-	if (strncmp((const char *)e_header.e_ident, "\x7f""ELF", 4)) {		// magic number
-		fprintf(stderr, "Error: Not ELF object file\n");
-		exit(1);
-	}
-	if (e_header.e_ident[EI_CLASS] != ELFCLASS64) {
-		fprintf(stderr, "Error: Not 64-bit object\n");
-		exit(1);
-	}
-    if (e_header.e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
-		fprintf(stderr, "Error: This loader only support static linked executables. (ET_EXEC)\n");
-		exit(1);
-	}
-	
-	/* read program header table and map into memory */
-	if (lseek(fd, e_header.e_phoff, SEEK_SET) == -1) {
-		perror("Error: lseek() failed");
-		exit(1);
-	}
-	
-	Elf64_Phdr p_header;
-	for (int i = 0; i < e_header.e_phnum; i++) {
-		if (read(fd, &p_header, sizeof(Elf64_Phdr)) == -1) {
-			perror("Error: Cannot read a program header entry");
-			exit(1);
-		}
-		//fprintf(stderr, "Program header entry %d ", i), print_p_header(&p_header);
-
-		if (p_header.p_type != PT_LOAD)
+	for (int i = 0; i < p_header_num; i++) {
+		if (p_header_table[i].p_type != PT_LOAD)
             continue;
-		
-		if (p_header.p_vaddr + p_header.p_memsz > STACK_LOW) {
-			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx.\n", (size_t)0, STACK_LOW);
-			exit(1);
-		}
-		map_segment(&p_header, fd);
+
+		map_segment(&p_header_table[i], fd);
 	}
-
-	close(fd);
-
-	return e_header;
 }
+
 
 
 
@@ -115,22 +69,27 @@ int my_execve(const char *path, const char *argv[], const char *envp[])
 	Elf64_Ehdr e_header;
 	Elf64_Addr sp;
 
-	e_header = load_elf_binary(path);
+	e_header = read_elf_binary(path);
+	load_segments();	// for apager only
+
 	sp = create_stack(argv, envp, &e_header);
-	//print_stack((const char **)(sp + sizeof(int64_t)));
 
 	fprintf(stderr, "Executing the program '%s'... (Stack pointer = %#lx, Entry address = %#lx)\n", path, sp, e_header.e_entry);
 	fprintf(stderr, "--------\n");
 	
+	//>>>>
 	start(e_header.e_entry, sp);	// context switch
+	//<<<<
 
 	return -1;
 }
-#define 	execve 				my_execve
+#define 		execve 									my_execve
+
 
 
 
 #endif
+
 
 
 

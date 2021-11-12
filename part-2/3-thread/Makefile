@@ -1,9 +1,9 @@
 all: apager dpager test
 
-apager: apager.c common.c queue.c
+apager: apager.c common.c queue.c debug.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 apager.c -o apager
 
-dpager: dpager.c common.c queue.c
+dpager: dpager.c common.c queue.c debug.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 dpager.c -o dpager
 
 test: branch.c example_yield/a.c example_yield/b.c example_yield/c.c

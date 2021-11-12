@@ -101,7 +101,6 @@ int execves(const char *argv[], const char *envp[])
 
 			thread[i].entry = e_header.e_entry;
 			thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
-			//print_stack((const char **)(thread[i].sp + sizeof(unsigned long)));
 		}
 
 		switch (thread[i].state) {

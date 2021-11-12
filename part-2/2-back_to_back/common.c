@@ -19,12 +19,16 @@
 extern int		errno;
 
 
+#include		"debug.c"
+
+
 
 
 /* font style */
 
 #define			ERR_STYLE__								"\x1b[2m\x1b[3m"	// bold, italic
 #define			INV_STYLE__								"\x1b[7m"			// inverse
+#define			UND_STYLE__								"\x1b[4m"			// underline
 #define			__ERR_STYLE								"\x1b[0m"			// reset to normal
 
 
@@ -33,7 +37,7 @@ extern int		errno;
 /* memory layout */
 
 // adapted from linux/fs/binfmt_elf.c
-#define			_LOG2_PAGE_SIZE							12				// 4096 B = 4 KB
+#define			_LOG2_PAGE_SIZE							12		// 4 KB
 #define 		PAGE_SIZE								(unsigned long)(1 << _LOG2_PAGE_SIZE)
 #define 		PAGE_FLOOR(_addr)						((_addr) & ~(unsigned long)(PAGE_SIZE - 1))			// ELF_PAGESTART
 #define 		PAGE_OFFSET(_addr)						((_addr) & (PAGE_SIZE - 1))							// ELF_PAGEOFFSET
@@ -44,7 +48,7 @@ extern int		errno;
 #define			THREAD_SPACE_HIGH						0x50000000L
 
 
-#define			_STACK_SIZE_WITH_PADDING				(1L << 23)		// 8 MB
+#define			_STACK_SIZE_WITH_PADDING				(unsigned long)(1 << 23)	// 8 MB
 #define			PADDING									PAGE_SIZE
 
 #define			STACK_SPACE_HIGH						(THREAD_SPACE_HIGH - PADDING)
@@ -60,7 +64,7 @@ extern int		errno;
 #define			P_HEADER_TABLES_HIGH					(P_HEADER_TABLES_LOW + P_HEADER_TABLE_MAXSZ)
 
 
-#define			BASE_ADDR								0x60000000L							// gcc -Ttext-segment=(BASE_ADDR) ...
+#define			BASE_ADDR								0x60000000L		// gcc -Ttext-segment=(BASE_ADDR) ...
 
 
 
@@ -271,19 +275,21 @@ Elf64_Ehdr read_elf_binary(int thread_id, const char *path)
 		perror("Error: Cannot read a program header table");
 		exit(1);
 	}
+	if (mprotect((void *)p_header_table, PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)), PROT_READ) == -1) {
+		perror("Error: mprotect failed");
+		exit(1);
+	}
 
 
-	Elf64_Addr addr_lower_bound, addr_upper_bound;
-	addr_lower_bound = SEGMENT_SPACE_LOW;
-	addr_upper_bound = SEGMENT_SPACE_HIGH;
+	/* check address range of segments */
 
 	for (int i = 0; i < e_header.e_phnum; i++) {
 		//fprintf(stderr, "Program header entry %d ", i), print_p_header(&p_header_table[i]);
 		if (p_header_table[i].p_type != PT_LOAD)
             continue;
 
-		if (!((addr_lower_bound <= p_header_table[i].p_vaddr) && (p_header_table[i].p_vaddr + p_header_table[i].p_memsz <= addr_upper_bound))) {
-			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx. Try gcc option '-Ttext-segment=%#lx'.\n", addr_lower_bound, addr_upper_bound, addr_lower_bound);
+		if (!((SEGMENT_SPACE_LOW <= p_header_table[i].p_vaddr) && (p_header_table[i].p_vaddr + p_header_table[i].p_memsz <= SEGMENT_SPACE_HIGH))) {
+			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx. Try gcc option '-Ttext-segment=%#lx'.\n", SEGMENT_SPACE_LOW, SEGMENT_SPACE_HIGH, SEGMENT_SPACE_LOW);
 			exit(1);
 		}
 	}
@@ -431,144 +437,10 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 	/* return stack pointer */
 
+	//print_stack((const char **)(sp + sizeof(int64_t)));
 	return sp;
 }
 
-
-
-
-/* for debugging */
-/*
-void print_e_header(const Elf64_Ehdr *ep)
-{
-	fprintf(stderr, "{\n");
-	fprintf(stderr, "\tunsigned char \te_ident[16] \t= \"%s\"\n", ep->e_ident);		// ELF identification
-    fprintf(stderr, "\tElf64_Half \te_type \t\t= %#x\n", ep->e_type);				// Object file type
-    fprintf(stderr, "\tElf64_Half \te_machine \t= %#x\n", ep->e_machine);			// Machine type
-    fprintf(stderr, "\tElf64_Word \te_version \t= %u\n", ep->e_version);			// Object file version
-    fprintf(stderr, "\tElf64_Addr \te_entry \t= %#lx\n", ep->e_entry);				// Entry point address
-	fprintf(stderr, "\tElf64_Off \te_phoff \t= %#lx\n", ep->e_phoff);				// Program header offset
-	fprintf(stderr, "\tElf64_Off \te_shoff \t= %#lx\n", ep->e_shoff);				// Section header offset
-    fprintf(stderr, "\tElf64_Word \te_flags \t= %#x\n", ep->e_flags);				// Processor-specific flags
-    fprintf(stderr, "\tElf64_Half \te_ehsize \t= %u\n", ep->e_ehsize);				// ELF header size (equal to sizeof(Elf64_Ehdr))
-    fprintf(stderr, "\tElf64_Half \te_phentsize \t= %u\n", ep->e_phentsize);		// Size of program header entry
-	fprintf(stderr, "\tElf64_Half \te_phnum \t= %u\n", ep->e_phnum);				// Number of program header entries
-    fprintf(stderr, "\tElf64_Half \te_shentsize \t= %u\n", ep->e_shentsize);		// Size of section header entry
-    fprintf(stderr, "\tElf64_Half \te_shnum \t= %u\n", ep->e_shnum);				// Number of section header entries
-    fprintf(stderr, "\tElf64_Half \te_shstrndx \t= %u\n", ep->e_shentsize);			// Section name string table index
-	fprintf(stderr, "}\n");
-}
-
-void print_p_header(const Elf64_Phdr *pp)
-{
-	fprintf(stderr, "{\n");
-    fprintf(stderr, "\tElf64_Word \tp_type \t\t= %#x\n", pp->p_type);				// Type of segment
-    fprintf(stderr, "\tElf64_Word \tp_flags \t= %#x\n", pp->p_flags);				// Segment attributes
-    fprintf(stderr, "\tElf64_Off \tp_offset \t= %#lx\n", pp->p_offset);				// Offset in file
-    fprintf(stderr, "\tElf64_Addr \tp_vaddr \t= %#lx\n", pp->p_vaddr);				// Virtual address in memory
-    //fprintf(stderr, "\tElf64_Addr \tp_paddr \t= %#lx\n", pp->p_paddr);			// Reserved
-    fprintf(stderr, "\tElf64_Xword \tp_filesz \t= %#lx\n", pp->p_filesz);			// Size of segment in file
-    fprintf(stderr, "\tElf64_Xword \tp_memsz \t= %#lx\n", pp->p_memsz);				// Size of segment in memory
-    fprintf(stderr, "\tElf64_Xword \tp_align \t= %#lx\n", pp->p_align);				// Alignment of segment
-	fprintf(stderr, "}\n");
-}
-
-void print_stack(const char **argv)
-{
-	char **envp;
-	Elf64_auxv_t *auxv;
-	int argc, envc, auxc;
-
-	for (int i = 0; ; i++) {
-		fprintf(stderr, "argv[%d] <%p> -> \"%s\" <%p>\n", i, &argv[i], argv[i], argv[i]);
-		if (!argv[i]) {
-			argc = i;
-			break;
-		}
-	}
-	printf("argc = %d\n", argc);
-
-	envp = (char **)(argv + argc + 1);							// envp
-	for (int i = 0; ; i++) {
-		fprintf(stderr, "envp[%d] <%p> -> \"%s\" <%p>\n", i, &envp[i], envp[i], envp[i]);
-		if (!envp[i]) {
-			envc = i;
-			break;
-		}
-	}
-	printf("envc = %d\n", envc);
-
-	auxv = (Elf64_auxv_t *)(envp + envc + 1);					// auxc
-	for (int i = 0; ; i++) {
-		fprintf(stderr, "auxv[%d] <%p> = ", i, &auxv[i]);
-		switch (auxv[i].a_type) {
-			case AT_NULL:			// 0: End of vector
-				fprintf(stderr, "AT_NULL, (ignored)\n");
-				break;
-			case AT_IGNORE:			// 1: Entry should be ignored
-				fprintf(stderr, "AT_IGNORE, (ignored)\n");
-				break;
-			case AT_EXECFD:			// 2: File descriptor of program
-				fprintf(stderr, "AT_EXECFD, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_PHDR:			// 3: Program headers for program
-				fprintf(stderr, "AT_PHDR, %#lx\n", auxv[i].a_un.a_val);		// .a_ptr
-				break;
-			case AT_PHENT:			// 4: Size of program header entry
-				fprintf(stderr, "AT_PHENT, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_PHNUM:			// 5: Number of program headers
-				fprintf(stderr, "AT_PHNUM, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_PAGESZ:			// 6: System page size
-				fprintf(stderr, "AT_PAGESZ, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_BASE:			// 7: Base address of interpreter
-				fprintf(stderr, "AT_BASE, %#lx\n", auxv[i].a_un.a_val);		// .a_ptr
-				break;
-			case AT_FLAGS:			// 8: Flags
-				fprintf(stderr, "AT_FLAGS, %#lx\n", auxv[i].a_un.a_val);
-				break;
-			case AT_ENTRY:			// 9: Entry point of program
-				fprintf(stderr, "AT_ENTRY, %#lx\n", auxv[i].a_un.a_val);	// .a_ptr
-				break;
-			case AT_NOTELF:			// 10: Program is not ELF
-				fprintf(stderr, "AT_NOTELF, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_UID:			// 11: Real uid
-				fprintf(stderr, "AT_UID, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_EUID:			// 12: Effective uid
-				fprintf(stderr, "AT_EUID, %ld\n", auxv[i].a_un.a_val);
-				break;	
-			case AT_GID:			// 13: Real gid
-				fprintf(stderr, "AT_GID, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_EGID:			// 14: Effective gid
-				fprintf(stderr, "AT_EGID, %ld\n", auxv[i].a_un.a_val);
-				break;
-			case AT_CLKTCK:			// 17: Frequency of times()
-				fprintf(stderr, "AT_CLKTCK, %ld\n", auxv[i].a_un.a_val);
-				break;
-			// Pointer to the global system page used for system calls and other nice things.
-			case AT_SYSINFO:		// 22
-				fprintf(stderr, "AT_SYSINFO, %#lx\n", auxv[i].a_un.a_val);
-				break;
-			case AT_SYSINFO_EHDR:	// 33
-				fprintf(stderr, "AT_SYSINFO_EHDR, %#lx\n", auxv[i].a_un.a_val);
-				break;
-			default:				// ???
-				fprintf(stderr, "AT_??? (%ld), %ld\n", auxv[i].a_type, auxv[i].a_un.a_val);
-				break;
-		}
-		if (auxv[i].a_type == AT_NULL) {
-			auxc = i;
-			break;
-		}
-	}
-	printf("auxc = %d\n", auxc);
-}
- */
 
 
 

@@ -58,7 +58,7 @@ mmap_err:
 void page_fault_handler(int signo, siginfo_t *si, void *arg)
 {
 	Elf64_Addr addr = (Elf64_Addr)si->si_addr;
-    fprintf(stderr, ERR_STYLE__"Thread %d: < Caught segmentation fault at address %#lx >\n"__ERR_STYLE, current_thread_idx, addr);
+    fprintf(stderr, UND_STYLE__ ERR_STYLE__"Thread %d: < Caught segmentation fault at address %#lx >\n"__ERR_STYLE, current_thread_idx, addr);
 
 	Thread *th = &thread[current_thread_idx];
 	for (int i = 0; i < th->p_header_num; i++) {
@@ -140,7 +140,6 @@ int execves(const char *argv[], const char *envp[])
 
 			thread[i].entry = e_header.e_entry;
 			thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
-			//print_stack((const char **)(thread[i].sp + sizeof(unsigned long)));
 		}
 
 		switch (thread[i].state) {

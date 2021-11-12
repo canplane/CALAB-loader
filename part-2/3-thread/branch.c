@@ -13,6 +13,7 @@
 /* font style */
 
 #define			ERR_STYLE__								"\x1b[2m\x1b[3m"	// bold, italic
+#define			UND_STYLE__								"\x1b[4m"			// underline
 #define			INV_STYLE__								"\x1b[7m"			// inverse
 #define			__ERR_STYLE								"\x1b[0m"			// reset to normal
 
