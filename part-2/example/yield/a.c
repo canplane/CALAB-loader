@@ -18,6 +18,6 @@ int main()
     
     printf("A - 3\n");
 
-    printf("A: return 251\n");
-    return_to_loader(251);      // exit: $ echo $? -> 251
+    printf("A: return 11\n");
+    return_to_loader(11);       // exit(11)
 }

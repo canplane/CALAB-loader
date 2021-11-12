@@ -1,12 +1,12 @@
 all: apager dpager test
 
-apager: apager.c common.c debug.c
+apager: apager.c common.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 apager.c -o apager
 
-dpager: dpager.c common.c debug.c
+dpager: dpager.c common.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 dpager.c -o dpager
 
-test: branch.c ../example/my_test.c ../example/bss.c ../example/func_call.c ../example/hello_world.c ../example/print.c ../example/test.c
+test: ../interrupt.c ../example/my_test.c ../example/bss.c ../example/func_call.c ../example/hello_world.c ../example/print.c ../example/test.c
 	gcc -static ../example/my_test.c -o ../example/my_test
 	gcc -static ../example/bss.c -o ../example/bss
 	gcc -static ../example/func_call.c -o ../example/func_call

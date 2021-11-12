@@ -39,7 +39,7 @@
 #define			CALAB_LOADER__CALL__yield				2
 
 
-// get ISR in loader
+// get function pointer of loader_ISR() in the loader program
 int (*__get_loader_call())(int, ...)
 {
 	void *ISR_addr;
@@ -58,18 +58,20 @@ int (*__get_loader_call())(int, ...)
 
 int return_to_loader(int exit_code)
 {
-	int (*loader_call)(int, ...) = __get_loader_call();
+	int (*loader_call)(int, ...) = __get_loader_call();		// loader_call() is equal to loader_ISR() in the loader program
 	if (!loader_call)
 		exit(exit_code);
 	
+	// call loader's ISR with code 1 (exit) and exit code
 	return loader_call(CALAB_LOADER__CALL__exit, exit_code);
 }
 int yield()
 {
-	int (*loader_call)(int, ...) = __get_loader_call();
+	int (*loader_call)(int, ...) = __get_loader_call();		// loader_call() is equal to loader_ISR() in the loader program
 	if (!loader_call)
 		return 0;
 	
+	//call loader's ISR with code 2 (yield)
 	return loader_call(CALAB_LOADER__CALL__yield);
 }
 

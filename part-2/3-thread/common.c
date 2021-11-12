@@ -207,7 +207,7 @@ void unmap_thread(int thread_id)
 
 
 // interrupt service routine: call by running thread
-int loader_call(int code, ...)
+int loader_ISR(int code, ...)
 {
 	va_list ap;
 	va_start(ap, code);
@@ -334,7 +334,7 @@ void make_additional_envp(char *envp_added[], char envp_added_asciiz_space[])
 	int i;
 
 	i = 0;
-	i += sprintf(envp_added[0] = (envp_added_asciiz_space + 1), "%s=%p", CALAB_LOADER__ENVVARNAME__CALL, (void *)loader_call);
+	i += sprintf(envp_added[0] = (envp_added_asciiz_space + 1), "%s=%p", CALAB_LOADER__ENVVARNAME__CALL, (void *)loader_ISR);
 	envp_added[1] = NULL;
 }
 

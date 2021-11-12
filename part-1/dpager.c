@@ -119,6 +119,7 @@ int my_execve(const char *path, const char *argv[], const char *envp[])
 	start(e_header.e_entry, sp);	// context switch
 	//<<<<
 
+	printf("This is never printed.\n");
 	return -1;
 }
 #define 		execve 									my_execve
@@ -137,11 +138,7 @@ int main(int argc, const char **argv, const char **envp)
         fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
         exit(1);
     }
-	if (execve(argv[1], argv + 1, envp) == -1) {
-		fprintf(stderr, "Cannot execute the program '%s': %s\n", argv[1], strerror(errno));
-		exit(1);
-	}
-
-	printf("This is never printed.\n");
+	execve(argv[1], argv + 1, envp);
+	
 	return 0;
 }

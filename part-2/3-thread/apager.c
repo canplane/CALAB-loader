@@ -167,9 +167,7 @@ int main(int argc, const char **argv, const char **envp)
 		fprintf(stderr, "Usage: %s file [args ...]\n", argv[0]);
 		exit(1);
 	}
-	if (execves(argv + 1, envp) == -1) {
-		fprintf(stderr, "Cannot execute the program '%s': %s\n", argv[1], strerror(errno));
-		exit(1);
-	}
+	execves(argv + 1, envp);
+	
 	return 0;
 }

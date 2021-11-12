@@ -14,8 +14,11 @@ int main()
 {
     printf("Hello World!\n");
 
-    yield();                    // yield
-    
+////////////////////////////////
+    printf("call yield()\n");
+    yield();                    // wait
+////////////////////////////////
+
     char *p = malloc(0x100000);
     printf("malloc(0x100000): %p\n", p);
 
@@ -26,5 +29,11 @@ int main()
     printf("Success!\n");
      */
     
-    return_to_loader(254);      // return 254;
+////////////////////////////////
+     printf("call return_to_loader(222)\n");
+    return_to_loader(222);      // exit with exit code 222
+////////////////////////////////
+
+    printf("return 111\n");
+    return 111;
 }

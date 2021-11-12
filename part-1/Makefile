@@ -1,12 +1,12 @@
 all: apager dpager test
 
-apager: apager.c common.c debug.c
+apager: apager.c common.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 apager.c -o apager
 
-dpager: dpager.c common.c debug.c
+dpager: dpager.c common.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 dpager.c -o dpager
 
-test: example/my_test.c example/my_test.c
+test: example/my_test.c
 	gcc -static example/my_test.c -o example/my_test
 
 run_apager:

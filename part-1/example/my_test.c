@@ -19,5 +19,6 @@ int main()
     printf("Success!\n");
      */
     
-    return 254;
+    printf("return 111\n");
+    return 111;
 }
