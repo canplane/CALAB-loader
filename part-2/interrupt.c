@@ -33,24 +33,26 @@
 
 /* loader call */
 
+// the name of custom environment variable whose value is set to the address of function 'loader_ISR()'
 #define			CALAB_LOADER__ENVVARNAME__CALL			"__CALAB_LOADER__CALL"
 
+// loader call code
 #define			CALAB_LOADER__CALL__exit				1
 #define			CALAB_LOADER__CALL__yield				2
 
 
 // get function pointer of 'loader_ISR()' in the loader program
-int (*__get_loader_call())(int, ...)
+int (*__get_loader_call(const char *__caller_name))(int, ...)
 {
 	void *ISR_addr;
 	char *ISR_addr_str;
 
 	if ((ISR_addr_str = getenv(CALAB_LOADER__ENVVARNAME__CALL)) == NULL) {
-		fprintf(stderr, ERR_STYLE__"Warning: The program is not executed on the loader program.\n"__ERR_STYLE);
+		fprintf(stderr, ERR_STYLE__"%s(): The program is not executed on the loader program.\n"__ERR_STYLE, __caller_name);
 		return NULL;
 	}
 	if (sscanf(ISR_addr_str, "%p", &ISR_addr) != 1) {
-		fprintf(stderr, ERR_STYLE__"Warning: Invalid environment variable: \"%s=%s\"\n"__ERR_STYLE, CALAB_LOADER__ENVVARNAME__CALL, ISR_addr_str);
+		fprintf(stderr, ERR_STYLE__"%s(): Invalid environment variable: \"%s=%s\"\n"__ERR_STYLE, __caller_name, CALAB_LOADER__ENVVARNAME__CALL, ISR_addr_str);
 		return NULL;
 	}
 	return (int (*)(int, ...))ISR_addr;
@@ -58,7 +60,7 @@ int (*__get_loader_call())(int, ...)
 
 int return_to_loader(int exit_code)
 {
-	int (*loader_call)(int, ...) = __get_loader_call();		// 'loader_call()' is equal to 'loader_ISR()' in the loader program
+	int (*loader_call)(int, ...) = __get_loader_call(__func__);		// 'loader_call()' is equal to 'loader_ISR()' in the loader program
 	if (!loader_call)
 		exit(exit_code);
 	
@@ -67,7 +69,7 @@ int return_to_loader(int exit_code)
 }
 int yield()
 {
-	int (*loader_call)(int, ...) = __get_loader_call();		// 'loader_call()' is equal to 'loader_ISR()' in the loader program
+	int (*loader_call)(int, ...) = __get_loader_call(__func__);		// 'loader_call()' is equal to 'loader_ISR()' in the loader program
 	if (!loader_call)
 		return 0;
 	
