@@ -30,6 +30,13 @@ typedef struct {
 } Queue;
 
 
+
+
+#define			__Queue__addr(_q, _idx) 				(void *)((unsigned long)(_q)->_array + (_idx) * (_q)->_element_size)
+
+
+
+
 // set array to queue and return queue handler
 #define 		Queue__init(_array)						__Queue__init((void *)(_array), sizeof(_array), sizeof(*_array))
 Queue __Queue__init(void *array, int array_size, int element_size)
@@ -43,9 +50,6 @@ Queue __Queue__init(void *array, int array_size, int element_size)
 	q._size = 0;
 	return q;
 }
-
-
-#define			__Queue__addr(_q, _idx) 				(void *)((unsigned long)(_q)->_array + (_idx) * (_q)->_element_size)
 
 
 #define 		Queue__push(_q, _element)				__Queue__push((_q), (void *)&(_element))
