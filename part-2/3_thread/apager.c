@@ -118,7 +118,7 @@ Elf64_Ehdr load_elf_binary(int thread_id, const char *path)
 		if ((addr_lower_bound <= p_header_table[i].p_vaddr) && (p_header_table[i].p_vaddr + p_header_table[i].p_memsz <= addr_upper_bound))
 			map_segment(thread_id, &p_header_table[i], fd);
 		else {
-			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx.\n", addr_lower_bound, addr_upper_bound);
+			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx. Try gcc option '-Ttext-segment=%#lx'.\n", addr_lower_bound, addr_upper_bound, addr_lower_bound);
 			exit(1);
 		}
 	}

@@ -1,6 +1,6 @@
 all: apager test
 
-apager: apager.c common.c
+apager: apager.c common.c queue.c
 	gcc -static -Wl,-Ttext-segment=0x60000000 apager.c -o apager
 
 test: branch.c example/my_test.c
