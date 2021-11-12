@@ -227,7 +227,6 @@ int loader_call(int code, ...)
 
 
 
-
 /* read information of segments from ELF binary file */
 
 Elf64_Ehdr read_elf_binary(int thread_id, const char *path)

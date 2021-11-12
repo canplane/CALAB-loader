@@ -97,7 +97,7 @@ int execves(const char *argv[], const char *envp[])
 
 		if (thread[i].state == THREAD_STATE_NEW) {
 			e_header = read_elf_binary(i, argv[i]);
-			load_segments(i);
+			load_segments(i);	// for apager only
 
 			thread[i].entry = e_header.e_entry;
 			thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
