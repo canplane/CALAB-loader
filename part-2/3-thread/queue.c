@@ -71,13 +71,13 @@ bool Queue__pop(Queue *q)
 }
 
 
-#define 		Queue__front(q, type)					*(type *)__Queue__front(q)
+#define 		Queue__front(q, __type__)				*(__type__ *)__Queue__front(q)
 void *__Queue__front(const Queue *q)
 {
 	return __Queue__addr(q, (q->_front + 1) % q->_array_length);
 }
 
-#define 		Queue__back(q, type)					*(type *)__Queue__back(q))
+#define 		Queue__back(q, __type__)				*(__type__ *)__Queue__back(q))
 void *__Queue__back(const Queue *q)
 {
 	return __Queue__addr(q, (q->_back + 1) % q->_array_length);
