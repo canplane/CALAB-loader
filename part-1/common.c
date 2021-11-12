@@ -28,7 +28,7 @@
 extern int 		errno;
 
 
-#include		"../etc/debug.c"
+//#include		"../etc/debug.c"
 
 
 

@@ -32,7 +32,7 @@ extern int		errno;
 
 #include		"queue.c"
 
-#include		"../../etc/debug.c"
+//#include		"../../etc/debug.c"
 
 
 
