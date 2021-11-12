@@ -1,8 +1,6 @@
 #ifndef			__APAGER_C__
 #define			__APAGER_C__
 
-#define			__LOAD_BACK_TO_BACK__
-
 #include 		"./common.c"
 
 
@@ -155,7 +153,7 @@ int my_execve(const char *argv[], const char *envp[])
 		thread.sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
 		//print_stack((const char **)(thread.sp + sizeof(unsigned long)));
 
-		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (Stack pointer = %#lx, Entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread.sp, thread.entry);
+		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (stack pointer = %#lx, entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread.sp, thread.entry);
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
 		
 		//>>>>

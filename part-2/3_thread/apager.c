@@ -150,6 +150,9 @@ int my_execve(const char *argv[], const char *envp[])
 		thread[i].state = THREAD_STATE_NEW;
 		Queue__push(&ready_q, i);
 	}
+	if (i > THREAD_MAX_NUM) {
+		fprintf(stderr, ERR_STYLE__"Warning: Can execute at most %d threads\n"__ERR_STYLE, THREAD_MAX_NUM);
+	}
 
 
 	/* run threads */
@@ -168,7 +171,7 @@ int my_execve(const char *argv[], const char *envp[])
 
 		switch (thread[i].state) {
 			case THREAD_STATE_NEW:
-				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (Stack pointer = %#lx, Entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread[i].sp, thread[i].entry);
+				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (stack pointer = %#lx, entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread[i].sp, thread[i].entry);
 				break;
 			case THREAD_STATE_WAIT:
 				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Continuing thread %d ('%s') ... \n"__ERR_STYLE, i, argv[i]);

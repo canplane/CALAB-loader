@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "branch.c"
+#include "../branch.c"
 
 int a;
 int b = 2;
