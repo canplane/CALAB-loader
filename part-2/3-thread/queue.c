@@ -38,7 +38,7 @@ typedef struct {
 
 
 // set array to queue and return queue handler
-#define 		Queue__init(_array)						__Queue__init((void *)(_array), sizeof(_array), sizeof(*_array))
+#define 		Queue__init(_array)						__Queue__init((void *)(_array), sizeof(_array), sizeof(*(_array)))
 Queue __Queue__init(void *array, int array_size, int element_size)
 {
 	Queue q;
