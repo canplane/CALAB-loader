@@ -146,7 +146,6 @@ int my_execve(const char *argv[], const char *envp[])
 	for (int i = 0; argv[i]; i++) {
 		thread.state = THREAD_STATE_NEW;
 
-
 		e_header = load_elf_binary(i, argv[i]);
 
 		thread.entry = e_header.e_entry;
