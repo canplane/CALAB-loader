@@ -170,7 +170,7 @@ int loader_ISR(int code, ...)
 			break;
 
 		case CALAB_LOADER__CALL__yield:
-			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Warning: Not supporting yield(). This is back-to-back loader. \n"__ERR_STYLE);
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Warning: Not supporting 'yield'. This is back-to-back loader. \n"__ERR_STYLE);
 			break;
 
 		default:
