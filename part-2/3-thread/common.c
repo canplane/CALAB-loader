@@ -124,7 +124,7 @@ int dispatch(int thread_id)
 				break;
 
 			case THREAD_STATE_WAIT:
-				longjmp(thread[thread_id].jmpenv, 1);
+				longjmp(thread[thread_id].jmpenv, true);
 				break;
 
 			case THREAD_STATE_RUN:
@@ -200,7 +200,7 @@ int loader_call(int code, ...)
 	
 	int ret = 0;
 	switch (code) {
-		case CALAB_LOADER__CALL__exit:
+		case CALAB_LOADER__CALL__exit:  	// return_to_loader
 			thread[current_thread_idx].state = THREAD_STATE_EXIT;
 			ret = thread[current_thread_idx].exit_code = va_arg(ap, int);
 
@@ -208,14 +208,15 @@ int loader_call(int code, ...)
 				longjmp(loader_jmpenv, true);
 			break;
 
-		case CALAB_LOADER__CALL__yield:
+		case CALAB_LOADER__CALL__yield:		// yield
 			thread[current_thread_idx].state = THREAD_STATE_WAIT;
+
 			if (!setjmp(thread[current_thread_idx].jmpenv))
 				longjmp(loader_jmpenv, true);
 			break;
 
 		default:
-			fprintf(stderr, ERR_STYLE__"Warning: Invalid call code: %d\n"__ERR_STYLE, code);
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Warning: Invalid call code: %d \n"__ERR_STYLE, code);
 			ret = -1;
 			break;
 	}

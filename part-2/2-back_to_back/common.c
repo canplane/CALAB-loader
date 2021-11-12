@@ -113,7 +113,7 @@ int dispatch(int thread_id)
 				break;
 
 			case THREAD_STATE_WAIT:
-				longjmp(thread.jmpenv, 1);
+				longjmp(thread.jmpenv, true);
 				break;
 
 			case THREAD_STATE_RUN:
@@ -195,10 +195,11 @@ int loader_call(int code, ...)
 			break;
 
 		case CALAB_LOADER__CALL__yield:
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Warning: Not supporting yield(). This is back-to-back loader. \n"__ERR_STYLE);
 			break;
 
 		default:
-			fprintf(stderr, ERR_STYLE__"Warning: Invalid call code: %d\n"__ERR_STYLE, code);
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Warning: Invalid call code: %d \n"__ERR_STYLE, code);
 			ret = -1;
 			break;
 	}
