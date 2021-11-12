@@ -227,6 +227,94 @@ int loader_call(int code, ...)
 
 
 
+
+/* read information of segments from ELF binary file */
+
+Elf64_Ehdr read_elf_binary(int thread_id, const char *path)
+{
+	/* open the program */
+
+	int fd;
+	if ((fd = open(path, O_RDONLY)) == -1) {
+		fprintf(stderr, "Error: Cannot open file '%s': %s\n", path, strerror(errno));
+		exit(1);
+	}
+
+
+	/* read ELF header */
+	
+	Elf64_Ehdr e_header;
+	if (read(fd, &e_header, sizeof(Elf64_Ehdr)) == -1) {
+		perror("Error: Cannot read ELF header");
+		exit(1);
+	}
+	//fprintf(stderr, "ELF header "), print_e_header(&e_header);
+	if (strncmp((const char *)e_header.e_ident, "\x7f""ELF", 4)) {		// magic number
+		fprintf(stderr, "Error: Not ELF object file\n");
+		exit(1);
+	}
+	if (e_header.e_ident[EI_CLASS] != ELFCLASS64) {
+		fprintf(stderr, "Error: Not 64-bit object\n");
+		exit(1);
+	}
+	if (e_header.e_type != ET_EXEC) {	// only support for ET_EXEC(static linked executable), not ET_DYN
+		fprintf(stderr, "Error: This loader only support static linked executables. (ET_EXEC)\n");
+		exit(1);
+	}
+
+
+	/* allocate memory to program header table */
+	
+	Elf64_Phdr *p_header_table;
+	if (e_header.e_phnum * sizeof(Elf64_Phdr) > P_HEADER_TABLE_MAXSZ) {
+		fprintf(stderr, "Error: The size of program header table is too large to store into memory. Cannot exceed %#lx.\n", P_HEADER_TABLE_MAXSZ);
+		exit(1);
+	}
+	fprintf(stderr, ERR_STYLE__"Thread %d: Mapping: Program header table -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE(thread_id), PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)));
+	if (mmap((void *)P_HEADER_TABLE(thread_id), PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+		perror("Error: Cannot allocate program header table into memory");
+		exit(1);
+	}
+	p_header_table = (Elf64_Phdr *)P_HEADER_TABLE(thread_id);
+	
+
+	/* read program header table */
+
+	if (lseek(fd, e_header.e_phoff, SEEK_SET) == -1) {
+		perror("Error: lseek failed");
+		exit(1);
+	}
+	if (read(fd, p_header_table, e_header.e_phnum * sizeof(Elf64_Phdr)) == -1) {
+		perror("Error: Cannot read a program header table");
+		exit(1);
+	}
+
+
+	Elf64_Addr addr_lower_bound, addr_upper_bound;
+	addr_lower_bound = SEGMENT_SPACE_LOW(thread_id);
+	addr_upper_bound = SEGMENT_SPACE_HIGH(thread_id);
+
+	for (int i = 0; i < e_header.e_phnum; i++) {
+		//fprintf(stderr, "Program header entry %d ", i), print_p_header(&p_header_table[i]);
+		if (p_header_table[i].p_type != PT_LOAD)
+            continue;
+
+		if (!((addr_lower_bound <= p_header_table[i].p_vaddr) && (p_header_table[i].p_vaddr + p_header_table[i].p_memsz <= addr_upper_bound))) {
+			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx. Try gcc option '-Ttext-segment=%#lx'.\n", addr_lower_bound, addr_upper_bound, addr_lower_bound);
+			exit(1);
+		}
+	}
+
+
+	thread[thread_id].fd = fd;
+	thread[thread_id].p_header_table = p_header_table, thread[thread_id].p_header_num = e_header.e_phnum;
+	
+	return e_header;
+}
+
+
+
+
 /* stack */
 
 void make_additional_envp(char *envp_added[], char envp_added_asciiz_space[])
