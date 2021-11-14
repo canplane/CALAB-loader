@@ -1,8 +1,3 @@
-#include "../interrupt.c"
-
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -41,5 +36,5 @@ int main()
   close(fd);
   printf("%s", data);
 
-  return_to_loader(27);
+  return 101;
 }

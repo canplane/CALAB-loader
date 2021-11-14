@@ -1,8 +1,9 @@
 /* 
- * /part-2/3-thread/dpager.c
+ * /part-2/option-1/2-back_to_back/dpager.c
  * ----------------
  * CALAB Master Programming Project - (Part 2) Advanced user-level loader
- * User-level threading (demand loading)
+ * Option 1
+ * Back-to-back loading (demand loading)
  * 
  * Sanghoon Lee (canplane@gmail.com)
  * 12 November 2021
@@ -71,13 +72,12 @@ void page_fault_handler(int signo, siginfo_t *si, void *arg)
 	Elf64_Addr addr = (Elf64_Addr)si->si_addr;
     fprintf(stderr, UND_STYLE__ ERR_STYLE__"Thread %d: < Caught segmentation fault at address %#lx >\n"__ERR_STYLE, current_thread_idx, addr);
 
-	Thread *th = &thread[current_thread_idx];
-	for (int i = 0; i < th->p_header_num; i++) {
-		if (th->p_header_table[i].p_type != PT_LOAD)
+	for (int i = 0; i < thread.p_header_num; i++) {
+		if (thread.p_header_table[i].p_type != PT_LOAD)
             continue;
-		if (!((th->p_header_table[i].p_vaddr <= addr) && (addr < th->p_header_table[i].p_vaddr + th->p_header_table[i].p_memsz)))
+		if (!((thread.p_header_table[i].p_vaddr <= addr) && (addr < thread.p_header_table[i].p_vaddr + thread.p_header_table[i].p_memsz)))
 			continue;
-		map_one_page(current_thread_idx, addr, &th->p_header_table[i], th->fd);
+		map_one_page(current_thread_idx, addr, &thread.p_header_table[i], thread.fd);
 		return;
 	}
 
@@ -126,47 +126,18 @@ int execves(const char *argv[], const char *envp[])
 	init_page_fault_handler();
 
 
-	/* init ready queue */
-	
-	int _ready_q_array[THREAD_MAX_NUM + 1];
-	Queue ready_q = Queue__init(_ready_q_array);
-	
-	for (i = 0; argv[i]; i++) {
-		thread[i].state = THREAD_STATE_NEW;
-		Queue__push(&ready_q, i);
-	}
-	if (i > THREAD_MAX_NUM) {
-		fprintf(stderr, ERR_STYLE__"Warning: Can execute at most %d threads\n"__ERR_STYLE, THREAD_MAX_NUM);
-	}
-
-
 	/* run threads */
 
 	Elf64_Ehdr e_header;
-	while (!Queue__empty(&ready_q)) {
-		i = Queue__front(&ready_q, int), Queue__pop(&ready_q);
+	for (int i = 0; argv[i]; i++) {
+		e_header = read_elf_binary(i, argv[i]);
 
-		if (thread[i].state == THREAD_STATE_NEW) {
-			e_header = read_elf_binary(i, argv[i]);
+		thread.entry = e_header.e_entry;
+		thread.sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
 
-			thread[i].entry = e_header.e_entry;
-			thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
-		}
-
-		switch (thread[i].state) {
-			case THREAD_STATE_NEW:
-				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (stack pointer = %#lx, entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread[i].sp, thread[i].entry);
-				break;
-			case THREAD_STATE_WAIT:
-				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Continuing thread %d ('%s') ... \n"__ERR_STYLE, i, argv[i]);
-				break;
-			default:
-				fprintf(stderr, "Error: Invalid state before dispatch: %d\n", thread[i].state);
-				exit(1);
-				break;
-		}
+		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (stack pointer = %#lx, entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread.sp, thread.entry);
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
-
+		
 		activate_page_fault_handler(true);
 		//>>>>
 		dispatch(i);	// context switch
@@ -174,20 +145,8 @@ int execves(const char *argv[], const char *envp[])
 		activate_page_fault_handler(false);
 
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
-		switch (thread[i].state) {
-			case THREAD_STATE_WAIT:
-				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d ('%s') waited \n"__ERR_STYLE, i, argv[i]);
-				Queue__push(&ready_q, i);
-				break;
-			case THREAD_STATE_EXIT:
-				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d ('%s') ended with exit code %d \n"__ERR_STYLE, i, argv[i], thread[i].exit_code);
-				unmap_thread(i);
-				break;
-			default:
-				fprintf(stderr, "Error: Returned invalid state: %d\n", thread[i].state);
-				exit(1);
-				break;
-		}
+		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d ('%s') ended with exit code %d \n"__ERR_STYLE, i, argv[i], thread.exit_code);
+		unmap_thread(i);
 	}
 	fprintf(stderr,  INV_STYLE__ ERR_STYLE__" All threads are successfully terminated \n"__ERR_STYLE);
 

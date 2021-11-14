@@ -1,8 +1,3 @@
-#include "../interrupt.c"
-
-
-
-
 #include <stdio.h>
 
 int foobar (int a, int b)
@@ -15,5 +10,5 @@ int main(int argc, char **argv)
 {
     foobar (3, 4);
 
-    return_to_loader (43);
+    return 102;
 }

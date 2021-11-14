@@ -1,8 +1,3 @@
-#include "../interrupt.c"
-
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <elf.h>
@@ -50,5 +45,5 @@ int main(int argc, char **argv, char** envp)
   close(fd);
   printf("%s", data);
 
-  return_to_loader(53);
+  return 104;
 }

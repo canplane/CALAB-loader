@@ -1,11 +1,12 @@
 /* 
- * part-2/2-back_to_back/dpager.c
+ * /part-2/option-2/2-back_to_back/dpager.c
  * ----------------
  * CALAB Master Programming Project - (Part 2) Advanced user-level loader
+ * Option 2 (Using fork(2))
  * Back-to-back loading (demand loading)
  * 
  * Sanghoon Lee (canplane@gmail.com)
- * 12 November 2021
+ * 14 November 2021
  */
 
 
@@ -115,12 +116,6 @@ int execves(const char *argv[], const char *envp[])
 {
 	int i;
 
-	/* make additional envp to interact loader with thread */
-
-	char *envp_added[8], envp_added_asciiz_space[256];
-	make_additional_envp(envp_added, envp_added_asciiz_space);
-
-
 	/* init page fault handler */
 
 	init_page_fault_handler();
@@ -130,12 +125,10 @@ int execves(const char *argv[], const char *envp[])
 
 	Elf64_Ehdr e_header;
 	for (int i = 0; argv[i]; i++) {
-		thread.state = THREAD_STATE_NEW;
-
 		e_header = read_elf_binary(i, argv[i]);
 
 		thread.entry = e_header.e_entry;
-		thread.sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
+		thread.sp = create_stack(i, argv, envp, &e_header);
 
 		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (stack pointer = %#lx, entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread.sp, thread.entry);
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);

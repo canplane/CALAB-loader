@@ -1,8 +1,8 @@
 /* 
- * /part-2/2-back_to_back/apager.c
+ * /part-2/option-1/3-thread/apager.c
  * ----------------
  * CALAB Master Programming Project - (Part 2) Advanced user-level loader
- * Back-to-back loading (all-at-once loading)
+ * User-level threading (all-at-once loading)
  * 
  * Sanghoon Lee (canplane@gmail.com)
  * 12 November 2021
@@ -64,11 +64,12 @@ mmap_err:
 
 Elf64_Addr load_segments(int thread_id)
 {
-	for (int i = 0; i < thread.p_header_num; i++) {
-		if (thread.p_header_table[i].p_type != PT_LOAD)
+	Thread *th = &thread[thread_id];
+	for (int i = 0; i < th->p_header_num; i++) {
+		if (th->p_header_table[i].p_type != PT_LOAD)
             continue;
 
-		map_segment(thread_id, &thread.p_header_table[i], thread.fd);
+		map_segment(thread_id, &th->p_header_table[i], th->fd);
 	}
 }
 
@@ -84,20 +85,47 @@ int execves(const char *argv[], const char *envp[])
 	char *envp_added[8], envp_added_asciiz_space[256];
 	make_additional_envp(envp_added, envp_added_asciiz_space);
 
+	
+	/* init ready queue */
+	
+	int _ready_q_array[THREAD_MAX_NUM + 1];
+	Queue ready_q = Queue__init(_ready_q_array);
+	
+	for (i = 0; argv[i]; i++) {
+		thread[i].state = THREAD_STATE_NEW;
+		Queue__push(&ready_q, i);
+	}
+	if (i > THREAD_MAX_NUM) {
+		fprintf(stderr, ERR_STYLE__"Warning: Can execute at most %d threads\n"__ERR_STYLE, THREAD_MAX_NUM);
+	}
+
 
 	/* run threads */
 
 	Elf64_Ehdr e_header;
-	for (int i = 0; argv[i]; i++) {
-		thread.state = THREAD_STATE_NEW;
+	while (!Queue__empty(&ready_q)) {
+		i = Queue__front(&ready_q, int), Queue__pop(&ready_q);
 
-		e_header = read_elf_binary(i, argv[i]);
-		load_segments(i);	// for apager only
+		if (thread[i].state == THREAD_STATE_NEW) {
+			e_header = read_elf_binary(i, argv[i]);
+			load_segments(i);	// for apager only
 
-		thread.entry = e_header.e_entry;
-		thread.sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
+			thread[i].entry = e_header.e_entry;
+			thread[i].sp = create_stack(i, argv, envp, (const char **)envp_added, &e_header);
+		}
 
-		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (stack pointer = %#lx, entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread.sp, thread.entry);
+		switch (thread[i].state) {
+			case THREAD_STATE_NEW:
+				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Executing thread %d ('%s') ... (stack pointer = %#lx, entry address = %#lx) \n"__ERR_STYLE, i, argv[i], thread[i].sp, thread[i].entry);
+				break;
+			case THREAD_STATE_WAIT:
+				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Continuing thread %d ('%s') ... \n"__ERR_STYLE, i, argv[i]);
+				break;
+			default:
+				fprintf(stderr, "Error: Invalid state before dispatch: %d\n", thread[i].state);
+				exit(1);
+				break;
+		}
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
 		
 		//>>>>
@@ -105,8 +133,20 @@ int execves(const char *argv[], const char *envp[])
 		//<<<<
 
 		fprintf(stderr, ERR_STYLE__"--------\n"__ERR_STYLE);
-		fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d ('%s') ended with exit code %d \n"__ERR_STYLE, i, argv[i], thread.exit_code);
-		unmap_thread(i);
+		switch (thread[i].state) {
+			case THREAD_STATE_WAIT:
+				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d ('%s') waited \n"__ERR_STYLE, i, argv[i]);
+				Queue__push(&ready_q, i);
+				break;
+			case THREAD_STATE_EXIT:
+				fprintf(stderr, INV_STYLE__ ERR_STYLE__" Thread %d ('%s') ended with exit code %d \n"__ERR_STYLE, i, argv[i], thread[i].exit_code);
+				unmap_thread(i);
+				break;
+			default:
+				fprintf(stderr, "Error: Returned invalid state: %d\n", thread[i].state);
+				exit(1);
+				break;
+		}
 	}
 	fprintf(stderr,  INV_STYLE__ ERR_STYLE__" All threads are successfully terminated \n"__ERR_STYLE);
 

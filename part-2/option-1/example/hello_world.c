@@ -18,5 +18,5 @@ int main(int argc, char **argv)
   close(fd);
   printf("%s", data);
 
-  return_to_loader (67);
+  return_to_loader (103);
 }

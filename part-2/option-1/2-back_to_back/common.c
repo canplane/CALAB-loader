@@ -1,8 +1,9 @@
 /* 
- * /part-2/3-thread/common.c
+ * /part-2/option-1/2-back_to_back/common.c
  * ----------------
  * CALAB Master Programming Project - (Part 2) Advanced user-level loader
- * User-level threading
+ * Option 1
+ * Back-to-back loading
  * 
  * Sanghoon Lee (canplane@gmail.com)
  * 12 November 2021
@@ -30,8 +31,6 @@
 extern int		errno;
 
 
-#include		"queue.c"
-
 //#include		"../../etc/debug.c"
 
 
@@ -57,32 +56,24 @@ extern int		errno;
 #define 		PAGE_CEIL(_addr)						(((_addr) + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))		// ELF_PAGEALIGN
 
 
-#define			_LOG2_THREAD_MAX_NUM					3		// this loader can load at most 8 programs
-#define			THREAD_MAX_NUM							(1 << _LOG2_THREAD_MAX_NUM)
-
-
-#define			THREADS_LOW								0x10000000L
-#define			THREADS_HIGH							0x50000000L
-#define			_THREADS_STRIDE							((THREADS_HIGH - THREADS_LOW) >> _LOG2_THREAD_MAX_NUM)
-#define			THREAD_SPACE_LOW(_tid)					(THREADS_LOW + (_tid) * _THREADS_STRIDE)
-#define			THREAD_SPACE_HIGH(_tid)					(THREADS_LOW + ((_tid) + 1) * _THREADS_STRIDE)
+#define			THREAD_SPACE_LOW						0L
+#define			THREAD_SPACE_HIGH						0x50000000L
 
 
 #define			_STACK_SIZE_WITH_PADDING				(unsigned long)(1 << 23)	// 8 MB
 #define			PADDING									PAGE_SIZE
 
-#define			STACK_SPACE_HIGH(_tid)					(THREAD_SPACE_HIGH(_tid) - PADDING)
-#define			STACK_SPACE_LOW(_tid)					((THREAD_SPACE_HIGH(_tid) - _STACK_SIZE_WITH_PADDING) + PADDING)
+#define			STACK_SPACE_HIGH						(THREAD_SPACE_HIGH - PADDING)
+#define			STACK_SPACE_LOW							((THREAD_SPACE_HIGH - _STACK_SIZE_WITH_PADDING) + PADDING)
 #define			STACK_SIZE								(_STACK_SIZE_WITH_PADDING - (PADDING << 1))		// 8 MB - 8 KB
 
-#define			SEGMENT_SPACE_LOW(_tid)					THREAD_SPACE_LOW(_tid)
-#define			SEGMENT_SPACE_HIGH(_tid)				(THREAD_SPACE_HIGH(_tid) - _STACK_SIZE_WITH_PADDING)
+#define			SEGMENT_SPACE_LOW						THREAD_SPACE_LOW
+#define			SEGMENT_SPACE_HIGH						(THREAD_SPACE_HIGH - _STACK_SIZE_WITH_PADDING)
 
 
-#define			P_HEADER_TABLES_LOW						THREADS_HIGH
+#define			P_HEADER_TABLE_LOW						THREAD_SPACE_HIGH
 #define			P_HEADER_TABLE_MAXSZ					PAGE_SIZE
-#define			P_HEADER_TABLES_HIGH					(P_HEADER_TABLES_LOW + (P_HEADER_TABLE_MAXSZ << _LOG2_THREAD_MAX_NUM))
-#define			P_HEADER_TABLE(_tid)					(P_HEADER_TABLES_LOW + (_tid) * P_HEADER_TABLE_MAXSZ)
+#define			P_HEADER_TABLES_HIGH					(P_HEADER_TABLES_LOW + P_HEADER_TABLE_MAXSZ)
 
 
 #define			BASE_ADDR								0x60000000L		// gcc -Ttext-segment=(BASE_ADDR) ...
@@ -95,24 +86,16 @@ extern int		errno;
 #include		<stdarg.h>
 #include		<setjmp.h>
 
-#define			THREAD_STATE_NEW						0
-#define			THREAD_STATE_RUN						1
-#define			THREAD_STATE_WAIT						2
-#define			THREAD_STATE_EXIT						3
-
 
 typedef struct {
 	int				fd;
 	Elf64_Phdr		*p_header_table;
 	int				p_header_num;
 
-	int				state;
-	jmp_buf			jmpenv;
-
-	Elf64_Addr 		entry, sp;		// used at STATE_NEW
-	int				exit_code;		// used at STATE_EXIT
+	Elf64_Addr 		entry, sp;
+	int				exit_code;
 } Thread;
-Thread 			thread[THREAD_MAX_NUM];
+Thread 			thread;
 int 			current_thread_idx = -1;
 
 jmp_buf			loader_jmpenv;
@@ -123,34 +106,15 @@ int dispatch(int thread_id)
 {
 	current_thread_idx = thread_id;
 
-	int state = thread[thread_id].state;
-	thread[thread_id].state = THREAD_STATE_RUN;
-
 	if (!setjmp(loader_jmpenv)) {		// context switch
-		switch (state) {
-			case THREAD_STATE_NEW:
-				__asm__ __volatile__ (
-					"movq $0, %%rdx\n\t"		// because an instruction (%r9 = %rdx) will be executed at subroutine <_start>
-					"movq %0, %%rsp\n\t"
-					"jmp *%1"
-					: : "a" (thread[thread_id].sp), "b" (thread[thread_id].entry)
-				);
-				break;
-
-			case THREAD_STATE_WAIT:
-				longjmp(thread[thread_id].jmpenv, true);
-				break;
-
-			case THREAD_STATE_RUN:
-			case THREAD_STATE_EXIT:
-			default:
-				fprintf(stderr, "Error: Cannot dispatch thread %d which state set to invalid value: %d\n", thread_id, thread[thread_id].state);
-				exit(1);
-				break;
-		}			
+		__asm__ __volatile__ (
+			"movq $0, %%rdx\n\t"		// because an instruction (%r9 = %rdx) will be executed at subroutine <_start>
+			"movq %0, %%rsp\n\t"
+			"jmp *%1"
+			: : "a" (thread.sp), "b" (thread.entry)
+		);	
 	}
 
-	current_thread_idx = -1;
 	return 0;
 }
 
@@ -171,19 +135,14 @@ int loader_ISR(int code, ...)
 	
 	int ret = 0;
 	switch (code) {
-		case CALAB_LOADER__CALL__exit:  	// return_to_loader
-			thread[current_thread_idx].state = THREAD_STATE_EXIT;
-			ret = thread[current_thread_idx].exit_code = va_arg(ap, int);
+		case CALAB_LOADER__CALL__exit:
+			ret = thread.exit_code = va_arg(ap, int);
 
-			if (!setjmp(thread[current_thread_idx].jmpenv))
-				longjmp(loader_jmpenv, true);
+			longjmp(loader_jmpenv, true);
 			break;
 
-		case CALAB_LOADER__CALL__yield:		// yield
-			thread[current_thread_idx].state = THREAD_STATE_WAIT;
-
-			if (!setjmp(thread[current_thread_idx].jmpenv))
-				longjmp(loader_jmpenv, true);
+		case CALAB_LOADER__CALL__yield:
+			fprintf(stderr, INV_STYLE__ ERR_STYLE__" Warning: Not supporting 'yield'. This is back-to-back loader. \n"__ERR_STYLE);
 			break;
 
 		default:
@@ -241,12 +200,12 @@ Elf64_Ehdr read_elf_binary(int thread_id, const char *path)
 		fprintf(stderr, "Error: The size of program header table is too large to store into memory. Cannot exceed %#lx.\n", P_HEADER_TABLE_MAXSZ);
 		exit(1);
 	}
-	fprintf(stderr, ERR_STYLE__"Thread %d: Mapping: Program header table -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE(thread_id), PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)));
-	if (mmap((void *)P_HEADER_TABLE(thread_id), PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+	fprintf(stderr, ERR_STYLE__"Thread %d: Mapping: Program header table -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE_LOW, PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)));
+	if (mmap((void *)P_HEADER_TABLE_LOW, PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Cannot allocate program header table into memory");
 		exit(1);
 	}
-	p_header_table = (Elf64_Phdr *)P_HEADER_TABLE(thread_id);
+	p_header_table = (Elf64_Phdr *)P_HEADER_TABLE_LOW;
 	
 
 	/* read program header table */
@@ -259,8 +218,12 @@ Elf64_Ehdr read_elf_binary(int thread_id, const char *path)
 		perror("Error: Cannot read a program header table");
 		exit(1);
 	}
+	if (mprotect((void *)p_header_table, PAGE_CEIL(e_header.e_phnum * sizeof(Elf64_Phdr)), PROT_READ) == -1) {
+		perror("Error: mprotect failed");
+		exit(1);
+	}
 
-	
+
 	/* check address range of segments */
 
 	for (int i = 0; i < e_header.e_phnum; i++) {
@@ -268,15 +231,15 @@ Elf64_Ehdr read_elf_binary(int thread_id, const char *path)
 		if (p_header_table[i].p_type != PT_LOAD)
             continue;
 
-		if (!((SEGMENT_SPACE_LOW(thread_id) <= p_header_table[i].p_vaddr) && (p_header_table[i].p_vaddr + p_header_table[i].p_memsz <= SEGMENT_SPACE_HIGH(thread_id)))) {
-			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx. Try gcc option '-Ttext-segment=%#lx'.\n", SEGMENT_SPACE_LOW(thread_id), SEGMENT_SPACE_HIGH(thread_id), SEGMENT_SPACE_LOW(thread_id));
+		if (!((SEGMENT_SPACE_LOW <= p_header_table[i].p_vaddr) && (p_header_table[i].p_vaddr + p_header_table[i].p_memsz <= SEGMENT_SPACE_HIGH))) {
+			fprintf(stderr, "Error: Cannot support address range used by the program. This loader only supports for the range from %#lx to %#lx. Try gcc option '-Ttext-segment=%#lx'.\n", SEGMENT_SPACE_LOW, SEGMENT_SPACE_HIGH, SEGMENT_SPACE_LOW);
 			exit(1);
 		}
 	}
 
 
-	thread[thread_id].fd = fd;
-	thread[thread_id].p_header_table = p_header_table, thread[thread_id].p_header_num = e_header.e_phnum;
+	thread.fd = fd;
+	thread.p_header_table = p_header_table, thread.p_header_num = e_header.e_phnum;
 	
 	return e_header;
 }
@@ -302,8 +265,8 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 	/* allocate new stack space */
 
-	fprintf(stderr, ERR_STYLE__"Thread %d: Mapping: Stack -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, STACK_SPACE_LOW(thread_id), STACK_SIZE);
-	if (mmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+	fprintf(stderr, ERR_STYLE__"Thread %d: Mapping: Stack -> (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, STACK_SPACE_LOW, STACK_SIZE);
+	if (mmap((void *)STACK_SPACE_LOW, STACK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
 		perror("Error: Memory mapping failed");
 		exit(1);
 	}
@@ -347,7 +310,7 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 	Elf64_auxv_t *new_auxv;
 	char *new_argv_asciiz_space, *new_envp_asciiz_space;
 
-	sp = STACK_SPACE_HIGH(thread_id);						// bottom of stack
+	sp = STACK_SPACE_HIGH;									// bottom of stack
 
 	sp -= sizeof(int64_t);									// end marker
 
@@ -423,21 +386,18 @@ Elf64_Addr create_stack(int thread_id, const char *argv[], const char *envp[], c
 
 
 
-
 /* unmap memory */
 
 void unmap_thread(int thread_id)
 {
-	Thread *th = &thread[thread_id];
-
 	// free .text, .data, .bss
 	Elf64_Addr segment_start, bss_end;
-	for (int i = 0; i < th->p_header_num; i++) {
-		if (th->p_header_table[i].p_type != PT_LOAD)
+	for (int i = 0; i < thread.p_header_num; i++) {
+		if (thread.p_header_table[i].p_type != PT_LOAD)
             continue;
 
-		segment_start = PAGE_FLOOR(th->p_header_table[i].p_vaddr);
-		bss_end = PAGE_CEIL(th->p_header_table[i].p_vaddr + th->p_header_table[i].p_memsz);
+		segment_start = PAGE_FLOOR(thread.p_header_table[i].p_vaddr);
+		bss_end = PAGE_CEIL(thread.p_header_table[i].p_vaddr + thread.p_header_table[i].p_memsz);
 
 		fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Segments (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, segment_start, bss_end - segment_start);
 		if (munmap((void *)segment_start, bss_end - segment_start) == -1) {
@@ -447,21 +407,21 @@ void unmap_thread(int thread_id)
 	}
 
 	// free stack
-	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Stack (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, STACK_SPACE_LOW(thread_id), STACK_SIZE);
-	if (munmap((void *)STACK_SPACE_LOW(thread_id), STACK_SIZE) == -1) {
+	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Stack (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, STACK_SPACE_LOW, STACK_SIZE);
+	if (munmap((void *)STACK_SPACE_LOW, STACK_SIZE) == -1) {
 		perror("Error: Cannot unmap memory for stack");
 		exit(1);
 	}
 
 	// free page header table
-	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Program header table (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr)));
-	if (munmap((void *)P_HEADER_TABLE(thread_id), PAGE_CEIL(th->p_header_num * sizeof(Elf64_Phdr))) == -1) {
+	fprintf(stderr, ERR_STYLE__"Thread %d: Unmapping: Program header table (memory address = %#lx, size = %#lx)\n"__ERR_STYLE, thread_id, P_HEADER_TABLE_LOW, PAGE_CEIL(thread.p_header_num * sizeof(Elf64_Phdr)));
+	if (munmap((void *)P_HEADER_TABLE_LOW, PAGE_CEIL(thread.p_header_num * sizeof(Elf64_Phdr))) == -1) {
 		perror("Error: Cannot unmap memory for program header table");
 		exit(1);
 	}
 	
 	// close file
-	if (close(th->fd) == -1) {
+	if (close(thread.fd) == -1) {
 		perror("Error: Cannot close file");
 		exit(1);
 	}

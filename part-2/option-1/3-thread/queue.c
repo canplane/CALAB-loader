@@ -21,12 +21,12 @@
 
 
 typedef struct {
-	void *_array;
-	size_t _array_length;	// the number of indices in array
-	size_t _element_size;
+	void 			*_array;
+	size_t 			_array_length;	// the number of indices in array
+	size_t 			_element_size;
 
-	int _front, _back;
-	int _size;
+	int 			_front, _back;
+	int 			_size;
 } Queue;
 
 

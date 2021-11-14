@@ -30,10 +30,10 @@ int main()
      */
     
 ////////////////////////////////
-     printf("call return_to_loader(222)\n");
-    return_to_loader(222);      // exit with exit code 222
+     printf("call return_to_loader(200)\n");
+    return_to_loader(200);      // exit with exit code 200
 ////////////////////////////////
 
-    printf("return 111\n");
-    return 111;
+    printf("return 100\n");
+    return 100;
 }
