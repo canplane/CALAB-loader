@@ -2,8 +2,8 @@
 
 [CaSys Lab] 석사 신입생 선발 프로젝트 1차 - 프로그래밍 랩
 
-* 진행 기간: 2021-11-04 ~ 2021-11-14
-* Mentor: Bokyung Cha
+* Duration : 2021-11-04 ~ 2021-11-14
+* Mentor : Bokyung Cha
 
 
 ## 1. 구현 완료 상황
